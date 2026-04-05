@@ -3,10 +3,12 @@
 VARIABLE pipelineState
 
 PipelineStages == {
+    "Ideating",
     "TemplateForked",
     "RepoCloned",
     "WorkspaceOpened",
     "PreferencesConfigured",
+    "AuditingStack",
     "Expanding",
     "ExpandGatePassed",
     "ExpandRetrying",
@@ -30,8 +32,40 @@ PipelineStages == {
     "ContextRecovering",
     "Reconciling",
     "ReconcileBlocked",
-    "ScaffoldingArchived"
+    "Distilling",
+    "Iterating",
+    "IterationProposed",
+    "IterationConfirmed",
+    "ValidatingPMF"
 }
+
+\* ================================================================
+\* IDEATION — Human explores the problem space (irreducibly human)
+\* ================================================================
+
+(* The system begins here. A human has a problem to solve. They are
+   gathering domain knowledge: talking to clients, reading API docs,
+   studying the competitive landscape, sketching workflows, exploring
+   technical constraints. None of this work can be delegated to an
+   agent — it requires taste, judgment, and access to the real world.
+   The output is docs/input/ materials (client briefs, API specs,
+   feedback, domain knowledge) and a mental model of what to build.
+   
+   This state is reached in two ways:
+   1. First time: human has a new idea or client engagement
+   2. After PMF validation: user feedback reveals the next iteration
+   
+   Ideating has no gate. The human decides when they have enough
+   clarity to commit to building. *)
+Init == pipelineState = "Ideating"
+
+(* Human has enough clarity to commit. They fork the template and
+   begin the build process. This is the transition from exploration
+   to execution — the human's judgment call that the problem is
+   understood well enough to specify. *)
+CommitToBuild ==
+    /\ pipelineState = "Ideating"
+    /\ pipelineState' = "TemplateForked"
 
 \* ================================================================
 \* SETUP — Human-driven steps before the agent takes over
@@ -41,7 +75,6 @@ PipelineStages == {
    with .github/, preferences.md, and the lights-out-swe harness files.
    No git history carries over — clean slate. The repo contains the
    harness machinery but no project code yet. *)
-Init == pipelineState = "TemplateForked"
 
 (* Human clones the new repo to their local machine. Nothing special
    happens yet — the harness is inert until opened in VS Code with
@@ -63,7 +96,7 @@ OpenInEditor ==
     /\ pipelineState' = "WorkspaceOpened"
 
 (* Human edits preferences.md to declare their stack (Rust+WASM,
-   Python+FastAPI, etc.), deploy target (GitHub Pages, fly.io, etc.),
+   Python+FastAPI, etc.), deploy target (GitHub Pages, Docker on VPS, etc.),
    conventions, security baseline, and quality bar definitions for
    shed/house/skyscraper tiers. This is the only file that changes
    per project. Everything else is harness machinery. *)
@@ -75,10 +108,71 @@ ConfigurePreferences ==
    From this point the agent runs autonomously through all five phases
    in auto mode, or pauses between phases in stepped mode. The human's
    one-liner description is the only input — the agent infers everything
-   else from preferences.md and the harness protocol. *)
+   else from preferences.md, docs/input/ (if present), and the harness
+   protocol. *)
 RequestBuild ==
     /\ pipelineState = "PreferencesConfigured"
     /\ pipelineState' = "Expanding"
+
+\* ================================================================
+\* PRE-EXPAND: AUDIT STACK (optional, on-demand)
+\* ================================================================
+
+(* Before EXPAND, if the input docs describe an unfamiliar domain,
+   many external integrations, or if the user requests it, the agent
+   runs /audit-stack to validate that preferences.md stack choices
+   are orthodox and right-sized for the problem. This is optional —
+   skip for projects that clearly fit the default stack.
+   
+   The audit never auto-changes preferences.md — it reports findings
+   and the human decides whether to adjust. *)
+AuditStackFromConfigured ==
+    /\ pipelineState = "PreferencesConfigured"
+    /\ pipelineState' = "AuditingStack"
+
+(* Stack audit complete. Return to PreferencesConfigured, where the
+   human can adjust preferences if the audit recommended changes,
+   or proceed directly to "build me X". *)
+StackAuditComplete ==
+    /\ pipelineState = "AuditingStack"
+    /\ pipelineState' = "PreferencesConfigured"
+
+\* ================================================================
+\* PRE-EXPAND: DISTILL (optional, on-demand)
+\* ================================================================
+
+(* User has raw/messy input materials in docs/input/ — client emails,
+   API docs, meeting notes — and wants them structured before EXPAND.
+   The /distill prompt reads everything in docs/input/ and produces
+   structured reference docs (distilled-*.md) back into docs/input/.
+   This is optional: if docs/input/ is already structured or empty,
+   the user skips straight to "build me X". *)
+DistillFromConfigured ==
+    /\ pipelineState = "PreferencesConfigured"
+    /\ pipelineState' = "Distilling"
+
+(* Distill can also be invoked during iteration, when new feedback
+   docs need structuring before the agent can propose v[N+1]. *)
+DistillFromComplete ==
+    /\ pipelineState = "PipelineComplete"
+    /\ pipelineState' = "Distilling"
+
+(* Distillation complete. Structured docs written to docs/input/.
+   Return to the state we came from — either ready to build or
+   ready to iterate. Agent determines which from context. *)
+DistillCompleteToExpand ==
+    /\ pipelineState = "Distilling"
+    /\ pipelineState' = "PreferencesConfigured"
+
+DistillCompleteToIterate ==
+    /\ pipelineState = "Distilling"
+    /\ pipelineState' = "Iterating"
+
+(* Distill was invoked from Ideating. Return to Ideating — the human
+   may still be exploring, or may now be ready to iterate/build. *)
+DistillCompleteToIdeating ==
+    /\ pipelineState = "Distilling"
+    /\ pipelineState' = "Ideating"
 
 \* ================================================================
 \* PHASE 1: EXPAND — Produce scaffolding/scope.md
@@ -87,10 +181,17 @@ RequestBuild ==
 (* Agent creates scaffolding/ directory, writes .gitignore, and produces
    scaffolding/scope.md with: Problem, Smallest Useful Version,
    Acceptance Criteria (with quantitative thresholds), Stack (from
-   preferences.md), Deployment Target, Data Model, Quality Tier.
-   Post-expand gate checks all seven conditions. Gate passes on first
-   or second try. Agent commits checkpoint with conventional commit
-   message and logs result to scaffolding/log.md. *)
+   preferences.md), Deployment Target, Data Model, Estimated Cost
+   (monthly infra estimate — even "$0 — static hosting" for sheds),
+   Quality Tier.
+   Before writing scope, the agent:
+   1. Scans docs/input/ for reference materials — if present, reads all
+      and incorporates into acceptance criteria, data model, integrations
+   2. Reads preferences.md and logs the stack + deploy target being used;
+      flags conflicts between user request and preferences
+   Post-expand gate checks all conditions including cost estimate.
+   Agent commits checkpoint with conventional commit message and
+   logs result to scaffolding/log.md. *)
 PassExpandGate ==
     /\ pipelineState = "Expanding"
     /\ pipelineState' = "ExpandGatePassed"
@@ -130,9 +231,13 @@ AutoContinueToDesign ==
    diagram if >2 components), Directory Structure (exact file tree at
    repo root), Interfaces (typed data shapes, API contracts, module
    boundaries), External Integrations (with failure handling for each),
-   Open Questions (resolved or explicitly deferred). For house/skyscraper
-   projects: traces 2-3 key scenarios through the architecture, notes
-   concerns by severity. Post-design gate passes. *)
+   Observability (what needs logging/monitoring/tracing — structured
+   stdout for sheds, OTEL traces + Loki + Grafana alerting for houses,
+   full OTEL instrumentation + Prometheus metrics + dashboards for
+   skyscrapers), Open Questions (resolved or explicitly deferred).
+   For house/skyscraper projects: traces 2-3 key scenarios through the
+   architecture, notes concerns by severity. Post-design gate checks
+   all conditions including Observability section. *)
 PassDesignGate ==
     /\ pipelineState = "Designing"
     /\ pipelineState' = "DesignGatePassed"
@@ -171,17 +276,24 @@ AutoContinueToBuild ==
    per acceptance criterion), then implements in vertical slices. Each
    slice: pick most foundational criterion → write code → verification
    ladder (compile? → unit works? → test passes?) → next slice. Uses
-   QRSPI thinking internally. For house/skyscraper: creates project-
-   specific .github/agents/*.agent.md as roles emerge. Post-build gate:
-   code compiles, every criterion has a test, all tests pass, no secrets
-   in source, code matches design.md architecture. *)
+   QRSPI thinking internally. If data model exists, follows migration
+   safety rules: backward-compatible only, paired up/down migrations,
+   never DROP in same release as dependent code removal. For
+   house/skyscraper: creates project-specific .github/agents/*.agent.md
+   as roles emerge. Post-build gate: code compiles, every criterion
+   has a test, all tests pass, no secrets in source, dependency audit
+   passes (uvx pip-audit / npm audit / cargo audit — no high/critical
+   vulnerabilities), lockfile exists if project has dependencies,
+   SBOM generated for skyscraper tier (CycloneDX or SPDX format),
+   code matches design.md architecture. *)
 PassBuildGate ==
     /\ pipelineState = "Building"
     /\ pipelineState' = "BuildGatePassed"
 
 (* Post-build gate fails: compilation errors, missing test coverage
    for an acceptance criterion, test failures, secrets found in source
-   code, or code structure diverges from design.md architecture.
+   code, dependency audit finds high/critical vulnerabilities, lockfile
+   missing, or code structure diverges from design.md architecture.
    Agent applies debugging protocol: observe error → analyze root
    cause → hypothesize → fix → verify. *)
 FailBuildGate ==
@@ -276,13 +388,16 @@ ResolveReconcileBlock ==
    Runs all tests. Exercises the actual software against each acceptance
    criterion with real evidence: CLI output, curl responses, Playwright
    browser checks, sample data runs. Records exact command + exact
-   output for each criterion. Security scan: grep for secrets, check
-   XSS/SQLi/CSRF, verify auth, audit dependency sources. Confirms
-   deployment config matches scope.md target. If bugs are found, the
-   verify agent reports them but CANNOT fix them — control returns to
-   the main agent for fixes. Post-verify gate: all tests pass, app
-   runs locally, at least one criterion verified by running the app,
-   no critical security issues, deploy config correct. *)
+   output for each criterion. If acceptance criteria include throughput
+   or latency-under-load requirements, runs lightweight load test (hey,
+   wrk, k6) at specified concurrency to verify thresholds hold under
+   concurrent load. Security scan: grep for secrets, check XSS/SQLi/
+   CSRF, verify auth, audit dependency sources. Confirms deployment
+   config matches scope.md target. If bugs are found, the verify agent
+   reports them but CANNOT fix them — control returns to the main agent
+   for fixes. Post-verify gate: all tests pass, app runs locally, at
+   least one criterion verified by running the app, no critical security
+   issues, deploy config correct. *)
 PassVerifyGate ==
     /\ pipelineState = "Verifying"
     /\ pipelineState' = "VerifyGatePassed"
@@ -306,6 +421,15 @@ FailVerifyGate ==
 FixVerifyFailures ==
     /\ pipelineState = "VerifyFixing"
     /\ pipelineState' = "Verifying"
+
+(* If the verify-fix cycle makes significant code changes (new files,
+   interface changes, architecture adjustments), re-run the reconcile
+   agent before the final verify pass to ensure scaffolding docs still
+   match the code. This prevents the verify agent from grading against
+   stale specs after the main agent rewrote parts of the codebase. *)
+VerifyFixReconcile ==
+    /\ pipelineState = "VerifyFixing"
+    /\ pipelineState' = "Reconciling"
 
 (* Main agent cannot resolve the verify failures after retries.
    Escalates to the retry/block mechanism. *)
@@ -332,15 +456,22 @@ AutoContinueToDeploy ==
 \* PHASE 5: DEPLOY — Ship to target, verify live, write README
 \* ================================================================
 
-(* Agent runs pre-flight checks (git remote access, flyctl auth,
-   container registry creds, required env vars set). If pre-flight
-   passes: deploys to target (GitHub Pages, fly.io, container, cron).
-   Verifies the deployed system is accessible and working. Writes
-   README.md with: what this is, how to set up locally, how to deploy,
-   how to run tests. Post-deploy gate: deployed to target, accessible,
-   README.md exists, data persistence verified if stateful. Agent
-   reports FULL PIPELINE COMPLETE to human and STOPS. This is the
-   only mandatory human pause in auto mode. *)
+(* Agent runs pre-flight checks (SSH access, container registry creds,
+   required env vars set). Before deploying, agent identifies and
+   records the specific rollback command (e.g., docker compose up with
+   previous image tag, git push origin main for static sites).
+   If pre-flight passes: deploys to target (GitHub Pages, Docker on VPS,
+   container, cron). Verifies the deployed system is accessible and
+   working. Writes README.md with: what this is, how to set up locally,
+   how to deploy, how to run tests. Writes DELIVERY.md — the client-
+   facing handoff document (rollback command goes into Incident Response
+   section). All tiers get one; depth scales with quality tier:
+   shed gets summary + limitations; house adds verified criteria +
+   support terms; skyscraper adds architecture overview + incident
+   response + roadmap. Post-deploy gate: deployed to target, accessible,
+   README.md exists, DELIVERY.md exists, data persistence verified if
+   stateful. Agent reports FULL PIPELINE COMPLETE to human and STOPS.
+   This is the only mandatory human pause in auto mode. *)
 PassDeployGate ==
     /\ pipelineState = "Deploying"
     /\ pipelineState' = "PipelineComplete"
@@ -366,7 +497,13 @@ RetryDeploy ==
 (* Any gate has now failed 3 times. Agent commits the broken state
    for audit ("fix(<phase>): checkpoint broken state before revert"),
    then reverts with git revert HEAD (non-destructive). Logs failure
-   to scaffolding/log.md. Reports to human in BLOCKED format:
+   to scaffolding/log.md with a post-mortem section:
+   - What went wrong (root cause, not symptoms)
+   - What to try differently (concrete next approach)
+   - What to avoid (approaches tried and failed)
+   This accumulates institutional knowledge — the next session's
+   context recovery reads this and avoids repeating dead ends.
+   Reports to human in BLOCKED format:
    "BLOCKED: [what's wrong]. Options: [A, B, C]. Recommendation: [X]."
    Waits for human input before continuing. *)
 BlockAfterThreeRetries ==
@@ -392,6 +529,23 @@ UnblockByUser ==
 ResolveComplexityBrake ==
     /\ pipelineState = "ComplexityBrakeTriggered"
     /\ pipelineState' = "ContextRecovering"
+
+\* ================================================================
+\* CROSS-CUTTING: STOP conditions (modeling note)
+\* ================================================================
+
+(* copilot-instructions.md defines STOP conditions beyond gate failures:
+   - Stuck on the same error after 3 different approaches
+   - Scope is significantly larger than scope.md suggests
+   - External dependency is unavailable or behaves unexpectedly
+   - Uncertain whether something is safe (security, data loss, cost)
+   
+   These all produce BLOCKED behavior but are not modeled as separate
+   states. In practice they route through either ComplexityBrakeTriggered
+   (structural design concerns) or BlockedOnGate (everything else).
+   This is intentional — adding states for each STOP condition would
+   not change the system's behavior, only its legibility. The agent
+   uses the BLOCKED format regardless of which condition triggered it. *)
 
 \* ================================================================
 \* CROSS-CUTTING: Stepped mode (human-gated phase transitions)
@@ -442,7 +596,14 @@ ResumeToReconcile ==
    closed, machine restarted, or human walks away mid-phase. All work
    is preserved — git history has every checkpoint commit, scaffolding/
    has scope.md + design.md + log.md. No work is lost because the
-   agent commits after every gate pass. *)
+   agent commits after every gate pass.
+   
+   Session handoff protocol: when context is getting long or a session
+   is ending, the agent commits all current state (git add -A && git
+   commit) with a WIP message explaining where it is and what comes
+   next, and updates scaffolding/log.md with current state and the
+   immediate next step. This ensures the next session can pick up
+   cleanly. *)
 DropSession ==
     /\ pipelineState \in {"Expanding", "Designing", "Building", "Reconciling", "Verifying", "VerifyFixing", "Deploying"}
     /\ pipelineState' = "SessionDropped"
@@ -457,8 +618,15 @@ StartContextRecovery ==
    recent history, reads scaffolding/scope.md and design.md for plans,
    reads scaffolding/log.md for the experiment narrative, checks what
    code exists, runs existing tests to see current state. Then resumes
-   at the appropriate phase. Context recovery always triggers a
-   reconcile pass first to catch any drift from the interrupted session.
+   at the appropriate phase.
+   
+   REVIEW: The copilot-instructions.md context recovery section does
+   not mandate a reconcile pass before resuming. The agent determines
+   the resume phase from artifacts + log state. If the interrupted
+   session left code in an inconsistent state relative to docs, the
+   agent may choose to reconcile, but this is a judgment call, not a
+   mandatory transition.
+   
    The following six transitions represent the possible resume points
    based on what artifacts and code exist. *)
 
@@ -531,23 +699,146 @@ ResumeAfterReconcileToBuilding ==
     /\ pipelineState = "Reconciling"
     /\ pipelineState' = "Building"
 
+ResumeAfterReconcileToVerifying ==
+    /\ pipelineState = "Reconciling"
+    /\ pipelineState' = "Verifying"
+
 \* ================================================================
-\* TERMINAL: Archive scaffolding and ship
+\* PHASE 6: ITERATE — Post-delivery re-entry (on demand)
 \* ================================================================
 
-(* Pipeline is complete. Human confirms the live system works. The
-   scaffolding/ directory is archived (moved to scaffolding-archive/
-   or deleted). preferences.md and .github/ can stay or go — the
-   shipped software has zero dependency on the harness. The project
-   repo now contains only the software, its tests, its README, and
-   its deployment config. Harness fulfilled its purpose. *)
-ArchiveScaffolding ==
+(* After delivery, the user has feedback, change requests, or new
+   requirements. They add materials to docs/input/ and run /iterate.
+   The agent recovers full project context: git log, scaffolding,
+   codebase, tests. Reads new inputs + deferred items from scope.md
+   + known limitations from DELIVERY.md. Produces an iteration
+   proposal: prioritized changes, architecture impact, risk assessment.
+   This is NOT auto-continue — the solopreneur decides what to build.
+   
+   NOTE: The agent performs full context recovery as part of entering
+   Iterating (git log, scaffolding, tests). This is behavior within
+   the state, not a separate state — iterate.prompt.md Step 1 defines
+   the protocol. If tests fail during recovery, failures are noted as
+   pre-existing issues in the iteration proposal. *)
+StartIteration ==
     /\ pipelineState = "PipelineComplete"
-    /\ pipelineState' = "ScaffoldingArchived"
+    /\ pipelineState' = "Iterating"
+
+(* Agent reads all change sources (docs/input/ feedback, deferred items
+   from scope.md, known limitations from DELIVERY.md, bug reports,
+   technical debt) and produces a version proposal: summary, prioritized
+   changes, architecture impact, risk assessment, recommended approach.
+   Presents to user and waits. *)
+ProposeIteration ==
+    /\ pipelineState = "Iterating"
+    /\ pipelineState' = "IterationProposed"
+
+(* User reviews the proposal and confirms which changes to build.
+   This is a business decision — the user may accept all, some, or
+   none. If none: return to PipelineComplete. If some: agent versions
+   the current scope, writes v[N+1] acceptance criteria. *)
+ConfirmIteration ==
+    /\ pipelineState = "IterationProposed"
+    /\ pipelineState' = "IterationConfirmed"
+
+(* User rejects the iteration proposal or says "not now." Return to
+   the delivered state. No work is lost — the proposal is logged. *)
+RejectIteration ==
+    /\ pipelineState = "IterationProposed"
+    /\ pipelineState' = "PipelineComplete"
+
+(* No architecture changes needed — scope updated, skip DESIGN,
+   go directly to BUILD with existing design.md. *)
+IterateDirectToBuild ==
+    /\ pipelineState = "IterationConfirmed"
+    /\ pipelineState' = "Building"
+
+(* Architecture changes needed (minor or major). DESIGN phase runs
+   to update design.md before BUILD. The agent determines depth
+   from the iteration proposal — a quick update for minor changes,
+   a full design pass for major re-architecture. *)
+IterateToDesign ==
+    /\ pipelineState = "IterationConfirmed"
+    /\ pipelineState' = "Designing"
+
+\* ================================================================
+\* TERMINAL: Pipeline complete — scaffolding persists
+\* ================================================================
+
+(* Pipeline is complete. Human confirms the live system works.
+   DELIVERY.md has been written with the handoff details.
+   
+   Scaffolding (scope.md, design.md, log.md) and input docs (docs/input/)
+   PERSIST as the project's provenance record. They are NOT archived or
+   deleted. They enable:
+   1. Iteration — /iterate reads them to propose the next version
+   2. Context recovery — future agent sessions use them to understand
+      what was built, why, and what was deferred
+   3. Audit — the full chain from intent to delivered software is preserved
+   
+   PipelineComplete is a resting state, not a terminal state. The project
+   can re-enter the pipeline via /iterate at any time. *)
+
+\* (ArchiveScaffolding removed — scaffolding persists as provenance)
+
+\* ================================================================
+\* PRODUCT-MARKET FIT VALIDATION (irreducibly human)
+\* ================================================================
+
+(* After deploy and human confirmation, the software is in front of
+   real users. The human now validates whether the thing that was built
+   actually solves the problem it was meant to solve. This cannot be
+   automated: product-market fit is a property of the relationship
+   between the software and the market, not of the software alone.
+
+   The human collects real-world signals:
+   - Do users actually use it?
+   - Does it solve their problem or just pass its own tests?
+   - What do users complain about, work around, or ignore?
+   - What adjacent problems does usage reveal?
+
+   This is the outer feedback loop. The agent's inner loop
+   (EXPAND → DEPLOY) optimizes against acceptance criteria.
+   This outer loop validates whether the acceptance criteria
+   were the right criteria to optimize against. *)
+StartPMFValidation ==
+    /\ pipelineState = "PipelineComplete"
+    /\ pipelineState' = "ValidatingPMF"
+
+(* PMF validation reveals the product needs changes. Human returns
+   to ideation with new knowledge from real users — feedback docs,
+   usage data, revised understanding of the problem. This feeds
+   back into docs/input/ and re-enters the pipeline via /iterate.
+   The cycle: Ideating → [pipeline] → ValidatingPMF → Ideating. *)
+PMFNeedsIteration ==
+    /\ pipelineState = "ValidatingPMF"
+    /\ pipelineState' = "Ideating"
+
+(* PMF validation confirms the product solves the problem.
+   No further iteration needed. Return to PipelineComplete — the
+   project is at rest with validated product-market fit. *)
+PMFValidated ==
+    /\ pipelineState = "ValidatingPMF"
+    /\ pipelineState' = "PipelineComplete"
+
+(* Human has new knowledge from PMF validation and is ready to
+   iterate. They've added feedback to docs/input/ and want the
+   agent to propose the next version. Transitions from ideation
+   into the iteration flow rather than a fresh build. *)
+ReenterFromIdeation ==
+    /\ pipelineState = "Ideating"
+    /\ pipelineState' = "Iterating"
+
+(* Human in ideation has raw feedback docs that need structuring
+   before iterating. Distill first, then enter iteration. *)
+DistillFromIdeating ==
+    /\ pipelineState = "Ideating"
+    /\ pipelineState' = "Distilling"
 
 \* ================================================================
 
 Next ==
+    \/ CommitToBuild
     \/ CloneRepo
     \/ OpenInEditor
     \/ ConfigurePreferences
@@ -573,6 +864,7 @@ Next ==
     \/ PassVerifyGate
     \/ FailVerifyGate
     \/ FixVerifyFailures
+    \/ VerifyFixReconcile
     \/ EscalateVerifyFailure
     \/ RetryVerify
     \/ AutoContinueToDeploy
@@ -601,6 +893,28 @@ Next ==
     \/ ManualReconcileFromVerifying
     \/ ResumeAfterReconcileToDesigning
     \/ ResumeAfterReconcileToBuilding
-    \/ ArchiveScaffolding
+    \/ ResumeAfterReconcileToVerifying
+    \* Distill (on-demand, pre-expand or pre-iterate)
+    \/ DistillFromConfigured
+    \/ DistillFromComplete
+    \/ DistillFromIdeating
+    \/ DistillCompleteToExpand
+    \/ DistillCompleteToIterate
+    \/ DistillCompleteToIdeating
+    \* Audit stack (optional, from configured)
+    \/ AuditStackFromConfigured
+    \/ StackAuditComplete
+    \* Iterate (post-delivery re-entry)
+    \/ StartIteration
+    \/ ProposeIteration
+    \/ ConfirmIteration
+    \/ RejectIteration
+    \/ IterateDirectToBuild
+    \/ IterateToDesign
+    \* PMF validation (outer human loop)
+    \/ StartPMFValidation
+    \/ PMFNeedsIteration
+    \/ PMFValidated
+    \/ ReenterFromIdeation
 
 ====

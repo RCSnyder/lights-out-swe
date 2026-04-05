@@ -12,13 +12,15 @@ Read `scaffolding/scope.md` and `scaffolding/design.md`. Write the actual softwa
 3. **Write the integration/e2e test skeleton first** — before any implementation. This is the oracle that guides all subsequent work:
    - Create the test file(s) with one test case per acceptance criterion
    - Each test should call the real entry point (CLI, API endpoint, function) and assert the expected outcome
+   - **For external integrations**: use the test strategy declared in design.md (mock / recorded / live). If design.md says "mock," set up fakes. If "recorded," use record-replay fixtures. If "live," tests call the real API (mark these as integration tests that can be skipped offline).
    - Tests will fail initially — that's the point. They define "done."
 4. Build in **vertical slices** — get one acceptance criterion working end-to-end before moving to the next:
    a. Pick the most foundational acceptance criterion
-   b. Write the code for it
-   c. **Verification ladder**: Does it compile? → Does the unit work? → Does the test pass?
-   d. Only move to the next criterion after this one passes
-   e. Repeat
+   b. **Before writing new code, read existing code in the project.** Match the style, patterns, naming conventions, and error handling approach already established. Consistency across vertical slices matters — especially when sessions restart and a different model instance continues the work.
+   c. Write the code for it
+   d. **Verification ladder**: Does it compile? → Does the unit work? → Does the test pass?
+   e. Only move to the next criterion after this one passes
+   f. Repeat
 5. Follow the directory structure from design.md exactly
 6. **Scope lock**: Only build what's in scope.md. If you think something else is needed, note it under "## Deferred" in scope.md and move on.
 
@@ -51,7 +53,7 @@ Common patterns:
 - **Reviewer**: knows acceptance criteria, audits against spec (`tools: [read, search]`)
 - **Ops**: knows deploy target, runbook, rollback (`tools: [read, search, execute]`)
 
-These agents are **project code** — they survive after scaffolding is archived.
+These agents are **project code** — they live alongside scaffolding as permanent project artifacts.
 
 Run the **post-build gate**:
 
@@ -59,11 +61,23 @@ Run the **post-build gate**:
 - [ ] Every acceptance criterion from scope.md has a corresponding test
 - [ ] All tests pass
 - [ ] No secrets/credentials in source code
-- [ ] Code matches the architecture in design.md
+- [ ] Dependency audit passes — run the appropriate command (`uvx pip-audit`, `npm audit`, `cargo audit`, etc.) and confirm no high/critical vulnerabilities
+- [ ] Lockfile exists if project has dependencies (`uv.lock`, `Cargo.lock`, `package-lock.json`, etc.)
+- [ ] Code follows design.md directory structure and interfaces (manual check — reconcile agent runs next for deeper audit)
 
 If any gate condition fails, fix it and recheck. Up to 3 retries.
 
-Log the result to `scaffolding/log.md` with passing acceptance criteria listed as evidence.
+Log the result to `scaffolding/log.md`:
+
+```markdown
+## BUILD — [timestamp]
+
+- **Gate**: PASS (attempt N)
+- **Evidence**: [list each acceptance criterion with pass/fail]
+- **Changes**: [files created/modified]
+- **Retries**: [total gate attempts this phase]
+- **Next**: RECONCILE (house/skyscraper) or VERIFY (shed)
+```
 
 Git checkpoint:
 
@@ -92,6 +106,18 @@ If you cannot identify the root cause after 3 analysis attempts, STOP and report
 1. Update `design.md` to reflect the actual architecture
 2. Note what changed and why in the commit message
 3. Do NOT silently diverge from the design — the design must always match the code
+
+## Database Migration Safety
+
+If the project has a data model (scope.md Data Model ≠ "none"), follow these rules for any schema change:
+
+- **Backward-compatible only**: Every migration must work with the previous version of the code still running. Never assume instant cutover.
+- **Paired migrations**: Write both `up` and `down` (rollback) migrations. If rolling back is truly impossible, document why.
+- **Never destructive in the same release**: Do not `DROP` a column/table in the same release that removes the code using it. Sequence: (1) deploy code that stops using the column, (2) next release drops the column.
+- **Data backfill as separate step**: If a migration needs to backfill data, write it as a separate migration that runs after the schema change.
+- **Test migrations**: Run the migration against a copy of the data (or a representative fixture) before deploying. Verify both `up` and `down`.
+
+These rules apply at all tiers. A shed with SQLite has the same data integrity concerns as a skyscraper with Postgres.
 
 ## Rules
 

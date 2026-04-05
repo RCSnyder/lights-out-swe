@@ -6,13 +6,13 @@ A gated agentic harness for lights-out software engineering. You say "build me X
 
 ## What This Is
 
-A **lights-out software engineering** system. Like a [lights-out factory](https://en.wikipedia.org/wiki/Lights-out_manufacturing) in manufacturing — fully automated, no humans on the floor. You provide intent + preferences, the agent builds through quality gates, you come back to deployed software or a precise blocker.
+A **lights-out software engineering** system. Like a [lights-out factory](<https://en.wikipedia.org/wiki/Lights_out_(manufacturing)>) in manufacturing — fully automated, no humans on the floor. You provide intent + preferences, the agent builds through quality gates, you come back to deployed software or a precise blocker.
 
 Three layers:
 
 - **Harness** (this repo) — permanent. The gated protocol that drives autonomous builds.
-- **Scaffolding** (`scaffolding/` dir per project) — temporary. Scope, design, logs. Archived when done.
-- **Software** (the delivered product) — permanent. Stands alone. Zero dependency on this repo.
+- **Scaffolding** (`scaffolding/`) — persistent. Versioned scopes, design decisions, experiment logs. The project's provenance record.
+- **Software** (the delivered product) — permanent. Stands alone. Zero runtime dependency on the harness.
 
 ## How to Use It
 
@@ -21,8 +21,10 @@ Three layers:
 1. Click **"Use this template"** on GitHub → create a new repo for your project
 2. Clone your new repo and open it in VS Code
 3. Edit `preferences.md` to set your stack, deploy targets, and conventions
-4. Open Copilot chat in agent mode
-5. Say `build me [description of what you want]`
+4. (Optional) Add reference materials to `docs/input/` — client briefs, API specs, domain knowledge
+5. (Optional) Run `/distill` if input docs are messy and need structuring
+6. Open Copilot chat in agent mode
+7. Say `build me [description of what you want]`
 
 The agent takes it from there.
 
@@ -50,25 +52,29 @@ Say "stepped mode" for high-stakes projects. Agent pauses after each gate for yo
 
 ### The Phases
 
-| Phase         | Input         | Output                  | Gate Checks                                                                  |
-| ------------- | ------------- | ----------------------- | ---------------------------------------------------------------------------- |
-| **EXPAND**    | "build me X"  | `scaffolding/scope.md`  | Has acceptance criteria, deployment target, stack, smallest useful version   |
-| **DESIGN**    | scope.md      | `scaffolding/design.md` | Has directory structure, interfaces, error handling for integrations         |
-| **BUILD**     | design.md     | Working code            | Compiles, tests pass, no secrets in code, matches architecture               |
-| **RECONCILE** | Code + docs   | Synced scaffolding      | Documents match codebase, no spec-violating drift                            |
-| **VERIFY**    | Running code  | Verified system         | Tests pass, runs locally, acceptance criteria met, no security issues        |
-| **DEPLOY**    | Verified code | Live system             | Deployed, accessible, README exists, data persistence verified (if stateful) |
+| Phase         | Input         | Output                  | Gate Checks                                                                 |
+| ------------- | ------------- | ----------------------- | --------------------------------------------------------------------------- |
+| **EXPAND**    | "build me X"  | `scaffolding/scope.md`  | Has acceptance criteria, deployment target, stack, smallest useful version  |
+| **DESIGN**    | scope.md      | `scaffolding/design.md` | Has directory structure, interfaces, error handling for integrations        |
+| **BUILD**     | design.md     | Working code            | Compiles, tests pass, no secrets in code, matches architecture              |
+| **RECONCILE** | Code + docs   | Synced scaffolding      | Documents match codebase, no spec-violating drift                           |
+| **VERIFY**    | Running code  | Verified system         | Tests pass, runs locally, acceptance criteria met, no security issues       |
+| **DEPLOY**    | Verified code | Live system             | Deployed, accessible, README + DELIVERY.md exist, data persistence verified |
+| **ITERATE**   | Feedback      | Next version            | User confirms proposal, scope versioned, re-enters pipeline at right point  |
 
 ### Using Prompt Files
 
 The `.github/prompts/` directory has one prompt file per phase. You can invoke them directly:
 
-- `/expand` — Generate scope from a project idea
+- `/distill` — Structure raw input materials in `docs/input/` into consumable reference docs
+- `/audit-stack` — Validate preferences.md stack choices against input docs for orthodox, idiomatic fit
+- `/expand` — Generate scope from a project idea (reads `docs/input/` if present)
 - `/design` — Generate architecture from scope
 - `/build` — Build code from design
 - `/reconcile` — Sync scaffolding docs with actual codebase (auto-runs after BUILD for house/skyscraper)
 - `/verify` — Run verification checks (delegates to the read-only verify agent)
-- `/deploy` — Deploy and write project README
+- `/deploy` — Deploy, write project README and DELIVERY.md
+- `/iterate` — Post-delivery: propose and build the next version from feedback
 
 Or just let the instructions in `.github/copilot-instructions.md` drive the full loop automatically.
 
@@ -96,26 +102,29 @@ You can invoke agents directly (`@verify`, `@reconcile`, `@explore`) or let the 
     verify.agent.md          # Independent evaluator (read-only + execute)
     explore.agent.md         # Read-only codebase exploration
   prompts/
-    expand.prompt.md         # Phase 1: scope generation
+    distill.prompt.md        # Pre-expand: structure raw input materials
+    audit-stack.prompt.md    # Pre-expand: validate stack choices against problem domain
+    expand.prompt.md         # Phase 1: scope generation (reads docs/input/)
     design.prompt.md         # Phase 2: architecture from scope
     build.prompt.md          # Phase 3: code from design
     reconcile.prompt.md      # Phase 3.5: sync docs with code
     verify.prompt.md         # Phase 4: testing + acceptance
-    deploy.prompt.md         # Phase 5: deployment + README
+    deploy.prompt.md         # Phase 5: deployment + README + DELIVERY.md
+    iterate.prompt.md        # Phase 6: post-delivery version iteration
 preferences.md               # Stack, infra, conventions, security, quality bar
-scaffolding/                  # Created per-project (temporary)
-  scope.md                   # What we're building
-  design.md                  # How we're building it
-  log.md                     # Experiment log — every gate check, every result
 docs/
-  archive/                   # Old scaffolding from completed projects
+  input/                     # Reference materials — client briefs, API specs, feedback, state machines
   reference/
     system_state_machine.tla # TLA+ formal spec of the pipeline state machine
+scaffolding/                  # Persistent — scope, design, log (project provenance)
+  scope.md                   # What we're building (versioned across iterations)
+  design.md                  # How we're building it (living document)
+  log.md                     # Experiment log — every gate check, every result
 ```
 
 ### State Machine
 
-The full pipeline — including gate retries, stepped mode, session recovery, complexity brakes, and on-demand reconcile — is formally specified as a TLA+ state machine in [`docs/reference/system_state_machine.tla`](docs/reference/system_state_machine.tla).
+The full pipeline — including gate retries, stepped mode, session recovery, complexity brakes, on-demand reconcile, and post-delivery iteration — is formally specified as a TLA+ state machine in [`docs/reference/system_state_machine.tla`](docs/reference/system_state_machine.tla).
 
 To view the state machine diagram interactively, paste the spec into the source editor at [tlaplus-process-studio.com](https://tlaplus-process-studio.com).
 
@@ -142,11 +151,31 @@ Edit this to match your stack, infrastructure, conventions, and quality bar. The
 
 Projects scale on a formality dial:
 
-- **Shed** — Personal tool / script. Works, runs. README optional.
+- **Shed** — Personal tool / script. Works, runs. Tests for verification loop.
 - **House** — Real project with users. Tests for key paths, README required, deploy automated.
 - **Skyscraper** — Complex system, multiple users, money. Full tests, formal design, staged deploy, monitoring, runbook.
 
-Pick the right level in scope.md. Don't build skyscraper scaffolding for a shed.
+All tiers get the same DELIVERY.md structure — depth scales naturally with complexity. Pick the right level in scope.md. Don't build skyscraper process for a shed.
+
+### Portability
+
+The file formats (`.github/copilot-instructions.md`, `.prompt.md`, `.agent.md`) are GitHub Copilot-specific. The protocol — gated phases, verification ladder, scope lock, evidence rule — is tool-agnostic. To port to a different agentic IDE, translate the instructions and phase prompts to that tool's format. The [state machine spec](docs/reference/system_state_machine.tla) is the canonical, tool-independent definition.
+
+### Scope
+
+This system is designed to see how far **one agent** can go autonomously — solo developer, single agent, closed loop. Multi-agent coordination, PR-based workflows, and team code review processes are out of scope.
+
+**Future: Parallel BUILD.** The architecture supports parallelizing the BUILD phase using git worktrees. Each worktree gets its own VS Code window and agent session, implementing independent acceptance criteria behind shared interface contracts from design.md. What it would require:
+
+- **Slice planning** in DESIGN: identify parallelizable criteria, assign module boundaries, declare which slice owns the schema
+- **Coordinator prompt** (`/parallel-build`): creates worktrees (`git worktree add`), generates per-slice scope files with assigned criteria + interface contracts, opens windows (`code <path>`)
+- **Per-slice execution**: each agent runs a scoped BUILD (subset of criteria, full design.md for interface reference, own branch)
+- **Sequential merge**: slices merge to main in declared order (schema-owner first), conflicts resolved against interface contracts
+- **Post-merge gate**: full post-build gate runs on merged result, then normal pipeline continues (RECONCILE → VERIFY → DEPLOY)
+- **Failure model**: any slice BLOCKED → coordinator stops all slices, reports. No partial merges.
+- **New TLA+ states**: `SlicePlanning`, `ParallelBuilding`, `SliceBlocked`, `Merging`
+
+VS Code can't programmatically start Copilot chats, so the human opens each window and says "go." CLI agents (Claude Code, Codex) could be fully scripted from a coordinator terminal. The protocol should be agent-tool-agnostic.
 
 ## It's Still Just Git
 
@@ -171,13 +200,77 @@ The pipeline enforces BEE-OS (Builder-Grade Engineering OS) discipline:
 - **STOP Conditions** — Agent halts and reports when gates fail 3x, external deps break, or safety is uncertain
 - **Context Recovery** — On resume, agent reads scaffolding/ first, runs existing tests, picks up where it left off
 
-## Archiving
+## Provenance
 
-When a project ships:
+`scaffolding/` and `docs/input/` persist alongside the software. They are the project's provenance — the full record from initial intent through every iteration. Scope is versioned (v1, v2, ...) not overwritten. The experiment log and git history form a continuous audit trail.
 
-1. Move `scaffolding/` to `docs/archive/[project-name]/`
-2. The delivered software lives in its own repo with its own README
-3. Harness is ready for the next project
+Why keep them:
+
+- **Iteration depends on them.** `/iterate` reads scope.md, design.md, DELIVERY.md, and docs/input/ to propose the next version.
+- **Context recovery depends on them.** When an agent resumes work, scaffolding + git log is how it understands what happened and where to pick up.
+- **They're harmless.** A few markdown files add negligible size. The cost of keeping them is zero; the cost of losing them is re-discovery.
+
+## Iterating After Delivery
+
+When the client has feedback or you want to evolve a shipped product:
+
+1. Add feedback, new requirements, or change requests to `docs/input/`
+2. Run `/distill` if the inputs are messy (optional)
+3. Run `/iterate`
+4. Agent reads the codebase + scaffolding + new inputs, produces a **version proposal**
+5. You confirm which changes to build (this is a business decision, not auto-continue)
+6. Agent versions the scope, re-enters the pipeline at the right point, and builds
+
+```
+/iterate → proposal → user confirms → BUILD → RECONCILE → VERIFY → DEPLOY
+```
+
+Scope history is preserved — v1 criteria stay in scope.md under a version header. The audit trail is continuous across iterations.
+
+## Why This Over Plan → Build?
+
+VS Code's built-in Plan agent is a good tactical tool: it explores your codebase, asks clarifying questions, and produces step-by-step implementation plans. It works well for feature-level tasks within existing codebases.
+
+Lights-out-swe solves a different problem. The difference is structural, not just "more phases":
+
+**Where information enters the system.** Plan agent's only inputs are codebase state + session Q&A. Lights-out-swe has a dedicated channel (`docs/input/`) for client briefs, API specs, state machines, domain knowledge, and feedback — information that exceeds what any single planning session could extract. This gives the controller more _variety_ (in the Ashby's Law sense) to handle complex systems.
+
+**How convergence is enforced.** Plan → Build is open-loop: plan once, execute, hope it's right. Lights-out-swe is closed-loop: gates provide feedback at each phase, the verification ladder catches errors cheaply (parse before unit test before e2e before deploy), and the experiment log tracks the trajectory. Open-loop works for predictable systems; closed-loop is necessary when there's uncertainty.
+
+**What persists.** A Plan lives in session memory — ephemeral, not versioned, lost when the session ends. Scaffolding persists across sessions, is versioned across iterations, and forms a provenance chain that enables context recovery and iteration. The agent can resume where it left off because the scaffolding tells it what happened.
+
+**The potential energy metaphor.** The collaborative a priori work — long conversations with the client, distilling domain knowledge, setting preferences, defining acceptance criteria — is _potential energy_. Each input doc, each preference, each constraint narrows the solution space. By the time the agent enters BUILD, the search space is already small. Plan → Build starts at zero potential energy for greenfield projects and has to build it during the session through exploration.
+
+The hypothesis: **rich specification + constrained solution space + closed-loop execution converges more reliably than plan + open-loop execution.** The engineering happens in the conversation and the docs, not in the code generation.
+
+### What's Borrowed From Plan
+
+Plan has genuine strengths this system incorporates:
+
+- **Interactive alignment**: Plan cycles Discovery → Alignment → Design → Refinement. The EXPAND phase (and `/distill` before it) does the same thing through input docs + preferences confirmation.
+- **askQuestions for clarification**: Plan doesn't guess — it asks. The EXPAND phase flags conflicts with preferences and pauses for resolution.
+- **Parallel research**: Plan launches multiple Explore subagents for different areas. The explore agent (`@explore`) serves the same purpose during context recovery and BUILD.
+- **Explicit scope boundaries**: Plan includes "what's included and what's deliberately excluded." The Deferred section in scope.md + Scope Lock discipline enforce this.
+
+The key difference: Plan's output is a step list for a single session. Lights-out-swe's output is a specification that survives across sessions and iterations.
+
+## Where Humans Matter Most
+
+The system has two irreducibly human states, formally specified in the [state machine](docs/reference/system_state_machine.tla). No agent transition can skip either one.
+
+**Ideating** (`Init`). Before any code exists, a human explores the problem space: client conversations, domain research, competitive analysis, workflow sketching, technical constraint discovery. This work produces the `docs/input/` materials and `preferences.md` that narrow the solution space before the agent runs. The agent cannot do this — it has no access to clients, users, markets, or the real world.
+
+**Validating product-market fit** (`ValidatingPMF`). After deploy, a human puts the software in front of real users and observes: do they use it? Does it solve their problem or just pass its own tests? What do they work around, complain about, or ignore? PMF is a property of the relationship between software and its market, not a property of the software alone. No test suite can measure it.
+
+These two states form the **outer loop**:
+
+```
+Ideating → [agent pipeline] → ValidatingPMF → Ideating → [iterate pipeline] → ValidatingPMF → ...
+```
+
+The agent's inner loop (EXPAND → DEPLOY) optimizes against acceptance criteria. The outer loop validates whether those were the right criteria. Every other state in the system — expanding, designing, building, verifying, deploying — is agent-executable. These two are not. They are where the engineering judgment lives.
+
+The system is designed around this fact. The mandatory human pause after DEPLOY exists because the agent has no way to evaluate whether it built the right thing — only whether it built the thing right. The `/iterate` confirmation gate exists because iteration is a business decision informed by PMF signals the agent cannot observe. The `docs/input/` directory exists because the most valuable engineering work — translating human problems into machine-checkable specifications — happens in conversation, not in code generation.
 
 ## Citations
 
@@ -185,4 +278,4 @@ When a project ships:
 
 [2] P. Rajasekaran, "Harness design for long-running application development," Anthropic Engineering, Mar. 2026. [Online]. Available: https://www.anthropic.com/engineering/harness-design-long-running-apps
 
-[3] J. Blocklove et al., "Design Conductor: An agent autonomously builds a 1.5 GHz Linux-capable RISC-V CPU," arXiv:2603.08716 [cs.AR], Mar. 2025. [Online]. Available: https://arxiv.org/abs/2603.08716
+[3] J. Blocklove et al., "Design Conductor: An agent autonomously builds a 1.5 GHz Linux-capable RISC-V CPU," arXiv:2603.08716 [cs.AR], Mar. 2026. [Online]. Available: https://arxiv.org/abs/2603.08716

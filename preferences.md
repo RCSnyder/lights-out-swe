@@ -2,25 +2,28 @@
 
 ## Stack Preferences
 
-| Project Type       | Default Stack                                  | Deploy Target                |
-| ------------------ | ---------------------------------------------- | ---------------------------- |
-| Static tool / SPA  | Rust + WASM (Leptos or vanilla)                | GitHub Pages + Namecheap DNS |
-| Data pipeline      | Python                                         | fly.io or cron on VPS        |
-| LLM-powered engine | Python + LLM API                               | fly.io                       |
-| Full-stack web app | Python (FastAPI) or Rust + TypeScript frontend | fly.io + Neon                |
-| CLI tool           | Rust                                           | Binary release on GitHub     |
+| Project Type       | Default Stack                                  | Deploy Target            |
+| ------------------ | ---------------------------------------------- | ------------------------ |
+| Static tool / SPA  | Rust + WASM (Leptos or vanilla)                | GitHub Pages             |
+| Data pipeline      | Python                                         | Docker on VPS / cron     |
+| LLM-powered engine | Python + LLM API                               | Docker on VPS            |
+| Full-stack web app | Python (FastAPI) or Rust + TypeScript frontend | Docker Compose on VPS    |
+| CLI tool           | Rust                                           | Binary release on GitHub |
 
 ## Infrastructure
 
-- **Domains**: Namecheap
+Defaults are open-source / self-hostable.
+
 - **Static hosting**: GitHub Pages
-- **Compute**: fly.io
-- **Database**: Neon (Postgres)
-- **Auth**: Clerk (when needed)
-- **Secrets**: Doppler (or env vars for simple projects)
+- **Compute**: Docker / Docker Compose on any VPS
+- **Database**: PostgreSQL
+- **Auth**: Keycloak (when needed)
+- **Secrets**: env vars (or SOPS / Vault for complex projects)
 - **CI/CD**: GitHub Actions
-- **Monitoring**: Grafana Cloud (for long-running systems)
-- **Email**: Resend (when needed)
+- **Monitoring**: Prometheus + Grafana + Loki (backend) / OpenTelemetry (collection, when needed)
+- **Email**: SMTP (Mailpit for dev)
+- **Reverse proxy**: Caddy (automatic HTTPS via Let's Encrypt)
+- **Domains**: any registrar
 
 ## Conventions
 
@@ -30,7 +33,7 @@
 - README.md in every project — what, how to run, how to deploy.
 - No frameworks for the sake of frameworks. Vanilla when it's simpler.
 - Error messages should say what went wrong AND what to do about it.
-- When making a design decision, ask: "what would a senior, principle engineer at a serious company do?" Do that.
+- When making a design decision, ask: "what would a senior, principal engineer at a serious company do?" Do that.
 - **Periodically audit scaffolding overhead.** Every process step encodes an assumption about what the model can't do on its own. As models improve, re-examine whether each step is still load-bearing. Strip what's no longer necessary; add new steps where the model's expanded capability enables more ambitious outcomes.
 
 ## Security Baseline
@@ -52,6 +55,7 @@ May have users, but no tracking, no accounts, no server-side state.
 | Artifact / Practice | Required?                                                                     |
 | ------------------- | ----------------------------------------------------------------------------- |
 | README.md           | Yes — what it is + how to run (5 lines minimum)                               |
+| DELIVERY.md         | Yes — unified template, sections as brief as appropriate                      |
 | .gitignore          | Yes                                                                           |
 | Tests               | Yes — agent writes tests for verification loop. Proves it works autonomously. |
 | CI/CD               | No                                                                            |
@@ -60,13 +64,14 @@ May have users, but no tracking, no accounts, no server-side state.
 | Security review     | Basic — no secrets in code                                                    |
 | LICENSE             | No — user adds later if needed                                                |
 | CONTRIBUTING.md     | No                                                                            |
-| Scaffolding fate    | Archive or delete when done                                                   |
+| Scaffolding         | Persists — provenance record for iteration and audit                          |
 
 ### House (real project, tracked users, persistent data)
 
 | Artifact / Practice | Required?                                                   |
 | ------------------- | ----------------------------------------------------------- |
 | README.md           | Yes — what, setup, run, deploy, test                        |
+| DELIVERY.md         | Yes — unified template, full depth                          |
 | .gitignore          | Yes                                                         |
 | Tests               | Yes — key paths, business logic                             |
 | CI/CD               | Yes — automated tests on push                               |
@@ -77,13 +82,14 @@ May have users, but no tracking, no accounts, no server-side state.
 | CONTRIBUTING.md     | If open-source or team project                              |
 | CHANGELOG.md        | Recommended                                                 |
 | Custom agents       | Yes — create `.github/agents/` as roles emerge during BUILD |
-| Scaffolding fate    | Archive to docs/ when shipped                               |
+| Scaffolding         | Persists — provenance record for iteration and audit        |
 
 ### Skyscraper (complex system, multiple users, money)
 
 | Artifact / Practice | Required?                                                   |
 | ------------------- | ----------------------------------------------------------- |
 | README.md           | Yes — comprehensive, onboarding-grade                       |
+| DELIVERY.md         | Yes — unified template, comprehensive depth                 |
 | .gitignore          | Yes                                                         |
 | Tests               | Full — unit, integration, e2e                               |
 | CI/CD               | Yes — with staging environment                              |
@@ -94,9 +100,9 @@ May have users, but no tracking, no accounts, no server-side state.
 | CONTRIBUTING.md     | Yes                                                         |
 | CHANGELOG.md        | Yes                                                         |
 | RUNBOOK.md          | Yes — incident response, rollback procedures                |
-| Architecture docs   | design.md stays permanent (not archived)                    |
+| SBOM                | Yes — CycloneDX or SPDX format, generated at build time     |
 | Custom agents       | Yes — create `.github/agents/` as roles emerge during BUILD |
-| Scaffolding fate    | scope.md archived; design.md + log.md stay with the project |
+| Scaffolding         | Persists — full provenance record, design.md is living doc  |
 
 ## Toolchain Rules
 
@@ -108,7 +114,7 @@ These prevent common agent tarpits. Follow them exactly.
 - Project init: `uv init` → produces `pyproject.toml` (the single source of truth for deps, metadata, tool config).
 - Add deps: `uv add <package>`. Dev deps: `uv add --dev <package>`.
 - Run anything: `uv run python ...`, `uv run pytest`, etc.
-- Build: use setuptools as the build backend (default from `uv init`). `pyproject.toml` only — no `setup.py`, no `setup.cfg`.
+- Build: use the default build backend from `uv init`. `pyproject.toml` only — no `setup.py`, no `setup.cfg`.
 - **Never activate a venv.** `uv run` handles it. Venv activation does not persist between terminal calls in agent mode — this is a tarpit.
 - **Never use `pip install`.**
 
@@ -141,4 +147,4 @@ These prevent common agent tarpits. Follow them exactly.
 - **Never run interactive commands.** If a tool requires interactive input, find the non-interactive flag or config file alternative.
 - **Always check tool availability first.** Before using ANY tool for the first time in a session, run `which <tool>` (Unix) or `where <tool>` (Windows). If missing, install it or STOP. Do not assume anything is on PATH.
 - **Timeouts on long commands.** If a build or test takes longer than expected, check if it's actually running (not hung). Rust compiles and `playwright install` are legitimately slow.
-- **No global installs** unless it's a CLI tool you'll reuse (trunk, flyctl, uv itself). Everything else goes in the project.
+- **No global installs** unless it's a CLI tool you'll reuse (trunk, uv, docker). Everything else goes in the project.

@@ -18,19 +18,36 @@ You are now the **evaluator**, not the builder. Assume the build has bugs until 
 
 1. Read `scaffolding/scope.md` for acceptance criteria
 2. Run all tests. Record exact command, exit code, pass/fail count, any failure output.
-3. **Actually exercise the software** — verify each acceptance criterion with real evidence:
+3. **Audit test quality** — read the test files and check that tests are non-trivial:
+   - Tests assert meaningful properties (not just `assert True` or `is not None`)
+   - Tests exercise real code paths (not just mocks testing mocks)
+   - Tests actually verify what the acceptance criterion states (timing tests for latency criteria, output validation for correctness criteria)
+   - At least 2 criteria have edge case tests beyond the happy path
+   - If tests are vacuous: FAIL with specific examples of what's wrong
+4. **Actually exercise the software** — verify each acceptance criterion with real evidence:
    - **CLI tool**: Run it with representative input, check output matches expected
    - **Web API**: `curl` or equivalent HTTP request to each endpoint, check response status + body
    - **Web UI / SPA**: Run locally and use Playwright (`uv run playwright ...`) to load pages, check elements exist, interact with controls
    - **Data pipeline**: Run with sample data, verify output files/database state
    - **Cron/script**: Execute once manually, check side effects
    - For each criterion, record the **exact command run** and **exact output** as evidence
-4. Security check:
+5. Security check:
    - `grep -r` for common secret patterns (API_KEY, SECRET, password, token) in source
    - If web: no obvious XSS, SQL injection, or CSRF
    - Dependencies are from known sources
    - If auth exists: check it actually works
-5. Check deployment config exists and matches the target from scope.md
+6. **Frontend quality check** (if the project has a web UI):
+   - Run Lighthouse CI against the local dev server — report Performance, Accessibility, Best Practices, SEO scores
+   - Run axe-core if available — flag accessibility violations
+   - Any score below 80 is a concern to report
+   - Aesthetic/design criteria (typography, color, layout) require human review — note them as "human review recommended" rather than auto-passing
+7. Check deployment config exists and matches the target from scope.md
+8. **Load/concurrency check** (if acceptance criteria include throughput, concurrency, or latency-under-load requirements):
+   - Use a lightweight load tool (`hey`, `wrk`, `k6`, `ab`, or language-native equivalent) against the local dev server
+   - Run at the concurrency level stated in the acceptance criteria (or 10 concurrent users as a baseline if no specific number)
+   - Record: requests/sec, p50/p95/p99 latency, error rate
+   - If any acceptance criterion has a latency or throughput threshold, verify it holds under concurrent load — not just single-request
+   - If no concurrency criteria exist, skip this step
 
 ## Verify Agent Handoff
 
@@ -43,9 +60,12 @@ If the verify agent finds failures:
 3. After fixes, the verify agent re-runs verification
 4. This cycle repeats up to 3 times before escalating to BLOCKED
 
+**If the verify-fix cycle changes code significantly** (new files, interface changes, architecture adjustments), re-run the reconcile agent before the final verify pass to ensure scaffolding docs still match the code.
+
 ## Post-Verify Gate
 
 - [ ] All tests pass
+- [ ] Tests are non-trivial (verify agent confirms tests exercise real code paths with meaningful assertions)
 - [ ] Application runs locally without errors
 - [ ] At least one acceptance criterion verified by actually running the app
 - [ ] No critical security issues found
@@ -53,7 +73,17 @@ If the verify agent finds failures:
 
 If any gate condition fails, the verify agent reports failures. The **main agent** fixes them, then the verify agent re-checks. Up to 3 retries.
 
-Log the result to `scaffolding/log.md` with acceptance criteria status (✓ verified / ✗ failed / ? untested) as evidence.
+Log the result to `scaffolding/log.md`:
+
+```markdown
+## VERIFY — [timestamp]
+
+- **Gate**: PASS (attempt N)
+- **Evidence**: [list each acceptance criterion: ✓ verified / ✗ failed / ? untested]
+- **Changes**: [any fixes applied during verify-fix cycle]
+- **Retries**: [total gate attempts this phase]
+- **Next**: DEPLOY
+```
 
 Git checkpoint:
 

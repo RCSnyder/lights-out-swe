@@ -10,7 +10,18 @@ The user wants to build something new. Your job: produce `scaffolding/scope.md`.
 
 1. Create a `scaffolding/` directory in the project root
 2. Create a `.gitignore` appropriate for the project's stack (see "First Commit" in copilot-instructions.md). This must exist before the first `git add -A`.
-3. From the user's description, produce `scaffolding/scope.md` with these exact sections:
+3. **Scan input docs**: Check if `docs/input/` exists and contains files. If it does, read all files there. These are reference materials — client briefs, API specs, feedback, domain knowledge — that inform the scope. **If both a raw file and its `distilled-` counterpart exist, prefer the distilled version** (it has the same information in a more structured format). Incorporate them into the acceptance criteria, data model, stack choices, and integration requirements. If `docs/input/` is empty or doesn't exist, proceed from the user's description alone.
+4. **Confirm preferences**: Read `preferences.md`. Log what stack and deploy target you're using:
+
+   ```
+   Using: [stack] → [deploy target] (per preferences.md)
+   ```
+
+   In stepped mode, pause for confirmation. In auto mode, log and continue — but if the user's request clearly conflicts with preferences.md (e.g., "build me a Node app" when preferences say Rust), flag the conflict and pause for resolution.
+
+   **Optional**: If the input docs describe an unfamiliar domain, many external integrations, or if the user asks, run `/audit-stack` first to validate that the stack in preferences.md is orthodox and right-sized for this problem. This is recommended but not required — skip it for projects that clearly fit the default stack.
+
+5. From the user's description (and input docs if present), produce `scaffolding/scope.md` with these exact sections:
 
 ### scope.md format
 
@@ -50,29 +61,38 @@ Weight criteria toward whatever the model is weakest at (usually design quality 
 
 ## Deployment Target
 
-[Where this runs — GitHub Pages, fly.io, local, cron job, etc.]
+[Where this runs — GitHub Pages, Docker on VPS, local, cron job, etc.]
 
 ## Data Model
 
 [What data exists, shapes, persistence. Or "None — stateless" if applicable.]
+
+## Estimated Cost
+
+[Monthly infrastructure cost estimate. Be specific: "$0 — GitHub Pages" / "~$5/mo — VPS + PostgreSQL" / "~$20/mo — VPS + PostgreSQL + monitoring stack." If unsure, give a range. This prevents accidentally spinning up expensive infra for a shed.
+
+Note: AI agent execution costs (token usage) are separate from infrastructure costs. For complex projects, expect significant token usage across BUILD, VERIFY, and retry cycles.]
 
 ## Quality Tier
 
 [Shed / House / Skyscraper — see preferences.md for definitions. This determines which artifacts and practices are required.]
 ```
 
-4. Run the **post-expand gate**:
+6. Run the **post-expand gate**:
    - [ ] `scaffolding/scope.md` exists
    - [ ] Has "Acceptance Criteria" section with ≥1 checkable item
    - [ ] At least one acceptance criterion includes a measurable/quantitative threshold
    - [ ] Has "Deployment Target" section with a specific target
    - [ ] Has "Stack" section
+   - [ ] Has "Estimated Cost" section
    - [ ] Has "Quality Tier" section (shed / house / skyscraper)
    - [ ] "Smallest Useful Version" is genuinely small — not the kitchen sink
+   - [ ] Smallest Useful Version is genuinely useful — the acceptance criteria together form a coherent experience, not just independent checkboxes. A user who got only this version would find it valuable.
+   - [ ] If `docs/input/` had content, scope.md reflects those inputs
 
-5. If any gate condition fails, fix it and recheck.
+7. If any gate condition fails, fix it and recheck.
 
-6. Log the result to `scaffolding/log.md`:
+8. Log the result to `scaffolding/log.md`:
 
 ```markdown
 ## EXPAND — [timestamp]
@@ -80,16 +100,17 @@ Weight criteria toward whatever the model is weakest at (usually design quality 
 - **Gate**: PASS (attempt N)
 - **Evidence**: [what was checked]
 - **Changes**: scaffolding/scope.md created
+- **Retries**: [total gate attempts this phase]
 - **Next**: DESIGN
 ```
 
-7. Git checkpoint:
+9. Git checkpoint:
 
    ```
    git add -A && git commit -m "docs(expand): define scope for [project]" -m "[summarize key decisions, acceptance criteria count, stack choice]\nGate: post-expand PASS (attempt N)."
    ```
 
-8. **Auto-continue to DESIGN** (unless user specified stepped mode).
+10. **Auto-continue to DESIGN** (unless user specified stepped mode).
 
 ## Rules
 

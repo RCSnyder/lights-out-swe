@@ -110,6 +110,7 @@ Output a structured report:
 
 ## Constraints
 
+- **Code that compiles and passes tests is ground truth.** Update documents to match code, never the reverse. If the code contradicts scope.md acceptance criteria (not just design.md), that's spec-violating — STOP and report.
 - Do NOT modify source code. You fix documents to match reality.
 - Do NOT expand scope. If code has new behavior not in scope.md, flag it — don't retroactively authorize it.
 - Do NOT skip axes. Check all six even if the first few are clean.

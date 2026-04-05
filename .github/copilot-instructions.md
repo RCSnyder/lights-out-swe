@@ -1,6 +1,6 @@
 # Lights Out SWE
 
-This repo is a **lights-out software engineering** harness. It produces temporary scaffolding for software projects. An AI agent runs autonomously through gated phases — from intent to deployed software — with the lights off. The scaffolding gets archived when the project ships. The software stands alone with no dependency on this repo.
+This repo is a **lights-out software engineering** harness. An AI agent runs autonomously through gated phases — from intent to deployed software — with the lights off. The `scaffolding/` directory holds the project's provenance: versioned scopes, design decisions, and experiment logs. It persists alongside the software as a permanent record. The `docs/input/` directory holds reference materials — client briefs, API specs, feedback — that inform every phase. The software stands alone with no runtime dependency on this repo.
 
 **This repo is a GitHub template.** Each new project starts with "Use this template" on GitHub, which creates a fresh repo with these files and no git history. The project code lives in the repo root alongside the harness files. `preferences.md` can be customized per project.
 
@@ -12,11 +12,13 @@ This repo is a **lights-out software engineering** harness. It produces temporar
   agents/                    # Specialist agents with restricted tools
   prompts/                   # Phase prompts
 preferences.md               # Stack + conventions (customize per project)
-scaffolding/                  # Temporary — scope, design, log (archived when done)
+docs/
+  input/                     # Reference materials — client briefs, API specs, feedback
+scaffolding/                  # Persistent — scope, design, log (project provenance)
 <project files here>         # The actual software — src/, tests/, etc.
 ```
 
-**The project code goes in this repo's root.** The directory structure from `scaffolding/design.md` is created at the repo root. The `.github/`, `scaffolding/`, and `preferences.md` files coexist with the project files.
+**The project code goes in this repo's root.** The directory structure from `scaffolding/design.md` is created at the repo root. The `.github/`, `scaffolding/`, `docs/`, and `preferences.md` files coexist with the project files. Scaffolding and input docs persist as the project's provenance record — they enable iteration, context recovery, and audit.
 
 ## First Commit
 
@@ -39,6 +41,10 @@ node_modules/
 # Go
 /vendor/
 
+# IDE
+.vscode/
+.idea/
+
 # General
 .env
 .DS_Store
@@ -53,7 +59,13 @@ When the user says "build me X," follow this loop:
 
 ### Phase 1: EXPAND
 
-Produce `scaffolding/scope.md` with these exact sections:
+Before writing scope, check two things:
+
+1. **Input docs**: Scan `docs/input/` for reference materials (client briefs, API specs, feedback, domain knowledge). If present, read them all — they inform every section of scope.md.
+2. **Preferences confirmation**: Read `preferences.md` and log the stack + deploy target you're using. If the user's request conflicts with preferences, flag it and pause for resolution.
+3. **(Optional) Stack audit**: If the input docs describe an unfamiliar domain, many external integrations, or if the user requests it, run `/audit-stack` to validate that preferences.md stack choices are orthodox and right-sized for the problem. Skip for projects that clearly fit the default stack.
+
+Then produce `scaffolding/scope.md` with these exact sections:
 
 - **Problem**: What this solves (1-3 sentences)
 - **Smallest Useful Version**: The absolute minimum that's worth having
@@ -61,6 +73,7 @@ Produce `scaffolding/scope.md` with these exact sections:
 - **Stack**: Technology choices (reference `preferences.md`)
 - **Deployment Target**: Where this runs
 - **Data Model**: What data exists, shapes, persistence (or "none")
+- **Estimated Cost**: Monthly infrastructure cost estimate ("$0 — static hosting" is fine for sheds)
 - **Quality Tier**: Shed / House / Skyscraper (determines required artifacts and practices)
 
 Then run the **post-expand gate** before proceeding.
@@ -72,7 +85,8 @@ Produce `scaffolding/design.md` with these exact sections:
 - **Architecture**: How the pieces fit together (diagram if helpful)
 - **Directory Structure**: The actual file tree
 - **Interfaces**: Key data shapes, API contracts, module boundaries
-- **External Integrations**: What this talks to outside itself, how it handles failure
+- **External Integrations**: What this talks to outside itself, how it handles failure, and **test strategy** for each (mock / recorded / live)
+- **Observability**: What needs logging, what you'd check if this breaks at 2am (scales with tier — structured stdout for sheds, OTEL traces + Loki + Grafana alerting for houses, full OTEL instrumentation + Prometheus metrics + dashboards for skyscrapers)
 - **Open Questions**: Anything uncertain — resolve before building
 
 For house/skyscraper projects: review the design by tracing key scenarios through the architecture before building.
@@ -118,6 +132,7 @@ Reconcile can also be invoked **on demand** at any phase — useful after sessio
 - Run all tests via the verify agent (`@verify` — read-only, cannot edit code)
 - The verify agent exercises the application and checks each acceptance criterion with real evidence
 - If the verify agent finds failures, it produces a report; the **main agent** fixes the code; then the verify agent re-checks
+- If the verify-fix cycle makes significant code changes (new files, interface changes), re-run reconcile before the final verify pass
 - Check for obvious security issues (secrets in code, SQL injection, etc.)
 - Verify deployment config exists and is correct
 
@@ -129,8 +144,27 @@ Then run the **post-verify gate** before proceeding.
 - Verify it's accessible and working
 - Set up monitoring if the project warrants it (stateful/long-running systems)
 - Write a minimal `README.md` in the project (not the scaffolding)
+- Write `DELIVERY.md` — the client-facing handoff document. All projects get the same structure; depth scales naturally with complexity (a shed's sections are one-liners; a skyscraper's are comprehensive)
 
 Then run the **post-deploy gate**.
+
+### Phase 6: ITERATE (post-delivery, on demand)
+
+After delivery, when the client has feedback, change requests, or new requirements:
+
+1. User adds feedback/requirements to `docs/input/` and runs `/iterate`
+2. Agent recovers full project context (git log, scaffolding, codebase, tests)
+3. Agent reads new inputs + deferred items from scope.md + known limitations from DELIVERY.md
+4. Agent produces an **iteration proposal** — prioritized changes, architecture impact, risk assessment
+5. **User confirms** which changes to build (this is NOT auto-continue — iteration is a business decision)
+6. Agent versions the current scope, writes v[N+1] acceptance criteria, and re-enters the pipeline at the appropriate point:
+   - No architecture changes → BUILD directly
+   - Minor architecture changes → quick DESIGN update → BUILD
+   - Major re-architecture → full DESIGN → BUILD
+7. Pipeline runs normally from re-entry: BUILD → RECONCILE → VERIFY → DEPLOY
+8. DELIVERY.md is updated with the new version's changes
+
+Iteration preserves all v1 history — scope.md is versioned, not overwritten. The audit trail is continuous.
 
 ## Gate Rules
 
@@ -152,7 +186,9 @@ Gates are machine-checkable. After each phase, check the gate conditions. If a g
 - [ ] Has "Deployment Target" section with a specific target
 - [ ] Has "Stack" section that references known tech
 - [ ] Has "Quality Tier" section (shed / house / skyscraper)
+- [ ] Has "Estimated Cost" section
 - [ ] Has "Smallest Useful Version" that is genuinely small
+- [ ] Smallest Useful Version is genuinely useful — acceptance criteria form a coherent experience, not just independent checkboxes
 
 ## Post-Design Gate
 
@@ -160,6 +196,8 @@ Gates are machine-checkable. After each phase, check the gate conditions. If a g
 - [ ] Has "Directory Structure" section
 - [ ] Has "Interfaces" section with at least one data shape
 - [ ] Every external integration has error handling noted
+- [ ] Every external integration has a test strategy declared (mock / recorded / live)
+- [ ] Has "Observability" section
 - [ ] No open questions remain unresolved (or explicitly deferred)
 - [ ] Design review completed (house/skyscraper) or skipped with rationale (shed)
 
@@ -169,11 +207,14 @@ Gates are machine-checkable. After each phase, check the gate conditions. If a g
 - [ ] Every acceptance criterion from scope.md has a corresponding test
 - [ ] All tests pass
 - [ ] No secrets/credentials in source code
-- [ ] Code matches the architecture in design.md
+- [ ] Dependency audit passes — run the appropriate command (`uvx pip-audit`, `npm audit`, `cargo audit`, etc.) and confirm no high/critical vulnerabilities
+- [ ] Lockfile exists if project has dependencies (`uv.lock`, `Cargo.lock`, `package-lock.json`, etc.)
+- [ ] Code follows design.md directory structure and interfaces (manual check — reconcile agent runs next for deeper audit)
 
 ## Post-Verify Gate
 
 - [ ] All tests pass
+- [ ] Tests are non-trivial (verify agent confirms real code paths with meaningful assertions)
 - [ ] Application runs locally without errors
 - [ ] At least one acceptance criterion verified by running the app
 - [ ] No critical security issues
@@ -184,6 +225,7 @@ Gates are machine-checkable. After each phase, check the gate conditions. If a g
 - [ ] Deployed to specified target
 - [ ] Accessible (can reach it / run it)
 - [ ] README.md exists in the project with setup + run instructions
+- [ ] DELIVERY.md exists with at minimum: what was built, how to use it, known limitations
 - [ ] If stateful: data persistence verified
 
 ## BEE-OS Discipline
@@ -235,6 +277,18 @@ STOP and report to the user when:
 
 Say exactly: "BLOCKED: [what's wrong]. Options: [A, B, C]. Recommendation: [X]."
 
+After any BLOCKED event, append a post-mortem to the log entry:
+
+```markdown
+### Post-Mortem
+
+- **What went wrong**: [root cause, not symptoms]
+- **What to try differently**: [concrete next approach, not vague "try harder"]
+- **What to avoid**: [approaches that were tried and failed — save the next session from repeating them]
+```
+
+This accumulates institutional knowledge. The next session's context recovery reads this and avoids repeating dead ends.
+
 ### Context Recovery
 
 If you're resuming work on an existing project:
@@ -245,6 +299,8 @@ If you're resuming work on an existing project:
 4. Check what code already exists
 5. Run existing tests to see current state
 6. Pick up from wherever the last session left off
+
+**Session handoff**: When context is getting long, a session is ending, or you're pausing work: commit all current state (`git add -A && git commit`) with a WIP message explaining where you are and what comes next. Update `scaffolding/log.md` with current state and the immediate next step. This ensures the next session (or a different model instance) can pick up cleanly.
 
 **Phase transitions also require context recovery.** When moving from one phase to the next (e.g., DESIGN → BUILD, BUILD → VERIFY), re-read `scaffolding/scope.md` and `scaffolding/design.md` from scratch. Do not rely on carried context from the previous phase — treat each phase transition as a clean start with the scaffolding artifacts as your source of truth. This prevents context drift and ensures the evaluator (VERIFY) is not influenced by the builder's assumptions.
 
@@ -288,6 +344,7 @@ Maintain `scaffolding/log.md`. Append after every gate check:
 - **Gate**: PASS / FAIL (attempt N)
 - **Evidence**: [what was checked and the result]
 - **Changes**: [what was created/modified this phase]
+- **Retries**: [total gate attempts this phase — a proxy for cost/effort]
 - **Next**: [what phase comes next, or BLOCKED]
 ```
 
@@ -384,6 +441,15 @@ When the user says "build me X":
 
 ```
 EXPAND → gate → log → commit → DESIGN → gate → log → commit →
+BUILD → gate → log → commit → RECONCILE → log → commit →
+VERIFY → gate → log → commit → DEPLOY → gate → log → commit →
+STOP (report to user)
+```
+
+When the user says "/iterate" on a shipped project:
+
+```
+ITERATE (propose) → user confirms → version scope → re-enter pipeline →
 BUILD → gate → log → commit → RECONCILE → log → commit →
 VERIFY → gate → log → commit → DEPLOY → gate → log → commit →
 STOP (report to user)
