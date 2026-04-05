@@ -1,0 +1,64 @@
+---
+description: "Verify phase. Run all tests, verify acceptance criteria, check security, confirm deployment readiness."
+agent: "verify"
+---
+
+Verify the built software against the spec.
+
+## Evaluator Mindset
+
+You are now the **evaluator**, not the builder. Assume the build has bugs until proven otherwise. Agents consistently over-approve their own work — resist this tendency.
+
+- **Be skeptical by default.** "It looks like it works" is not evidence. Run it and check.
+- **Probe edge cases**, not just the happy path. If a feature handles normal input, try unusual input.
+- **Do not talk yourself out of real issues.** If something feels off, investigate. Do not rationalize it away.
+- Grade against the acceptance criteria literally — if the criterion says "< 200ms" and it takes 250ms, that's a fail, not "close enough."
+
+## Steps
+
+1. Read `scaffolding/scope.md` for acceptance criteria
+2. Run all tests. Record exact command, exit code, pass/fail count, any failure output.
+3. **Actually exercise the software** — verify each acceptance criterion with real evidence:
+   - **CLI tool**: Run it with representative input, check output matches expected
+   - **Web API**: `curl` or equivalent HTTP request to each endpoint, check response status + body
+   - **Web UI / SPA**: Run locally and use Playwright (`uv run playwright ...`) to load pages, check elements exist, interact with controls
+   - **Data pipeline**: Run with sample data, verify output files/database state
+   - **Cron/script**: Execute once manually, check side effects
+   - For each criterion, record the **exact command run** and **exact output** as evidence
+4. Security check:
+   - `grep -r` for common secret patterns (API_KEY, SECRET, password, token) in source
+   - If web: no obvious XSS, SQL injection, or CSRF
+   - Dependencies are from known sources
+   - If auth exists: check it actually works
+5. Check deployment config exists and matches the target from scope.md
+
+## Verify Agent Handoff
+
+This prompt delegates to the `verify` agent, which has `tools: [read, search, execute]` — it can run tests and exercise the app but **cannot edit source code**.
+
+If the verify agent finds failures:
+
+1. The verify agent produces a **Verification Report** with exact reproduction steps
+2. Control returns to the **main agent** (with edit capability) to fix the issues
+3. After fixes, the verify agent re-runs verification
+4. This cycle repeats up to 3 times before escalating to BLOCKED
+
+## Post-Verify Gate
+
+- [ ] All tests pass
+- [ ] Application runs locally without errors
+- [ ] At least one acceptance criterion verified by actually running the app
+- [ ] No critical security issues found
+- [ ] Deployment config exists and looks correct
+
+If any gate condition fails, the verify agent reports failures. The **main agent** fixes them, then the verify agent re-checks. Up to 3 retries.
+
+Log the result to `scaffolding/log.md` with acceptance criteria status (✓ verified / ✗ failed / ? untested) as evidence.
+
+Git checkpoint:
+
+```
+git add -A && git commit -m "test(verify): all acceptance criteria verified" -m "[list each criterion: \u2713 verified / \u2717 failed / ? untested]\nGate: post-verify PASS (attempt N)."
+```
+
+**Auto-continue to DEPLOY** (unless user specified stepped mode).

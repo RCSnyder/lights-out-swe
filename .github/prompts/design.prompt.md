@@ -1,0 +1,88 @@
+---
+description: "Design phase. Takes scope.md and produces design.md with architecture, directory structure, interfaces, and integration details."
+agent: "agent"
+---
+
+Read `scaffolding/scope.md`. Produce `scaffolding/design.md`.
+
+## Steps
+
+1. Read `scaffolding/scope.md` fully
+2. Read `preferences.md` if it exists (for stack conventions)
+3. Produce `scaffolding/design.md` with these exact sections:
+
+### design.md format
+
+```markdown
+# Design: [Project Name]
+
+## Architecture
+
+[How the pieces fit together. Include a simple ASCII diagram if the system has more than 2 components.]
+
+## Directory Structure
+
+[The actual file tree you'll create at the repo root. Be specific.]
+```
+
+├── src/
+│ └── ...
+├── tests/
+├── scaffolding/
+├── README.md
+└── ...
+
+```
+
+## Interfaces
+[Key data shapes, API contracts, module boundaries. At least one concrete type/shape.]
+
+## External Integrations
+[What this talks to outside itself. For each:
+- What it is
+- How you call it
+- What happens when it fails]
+
+[Or "None — self-contained" if applicable.]
+
+## Open Questions
+[Anything uncertain. Resolve these before building. Or "None — straightforward."]
+```
+
+4. **Design Review** (house/skyscraper only — skip for sheds):
+   Walk through 2-3 key scenarios from the acceptance criteria against the design. For each:
+   - Trace the data/control flow through the architecture
+   - Identify where it could fail or degrade
+   - Note any concerns (critical / major / minor)
+     If critical issues are found, fix the design before proceeding. Append findings to design.md under a `## Design Review` section.
+
+5. Run the **post-design gate**:
+   - [ ] `scaffolding/design.md` exists
+   - [ ] Has "Directory Structure" section
+   - [ ] Has "Interfaces" section with at least one data shape
+   - [ ] Every external integration has error handling noted
+   - [ ] No open questions remain unresolved (or explicitly deferred with rationale)
+   - [ ] Design review completed (house/skyscraper) or skipped (shed) with rationale
+
+6. If any gate condition fails, fix it and recheck.
+
+7. Log the result to `scaffolding/log.md`.
+
+8. Git checkpoint:
+
+   ```
+   git add -A && git commit -m "docs(design): architecture for [project]" -m "[summarize architecture, key interfaces, integration count]\nGate: post-design PASS (attempt N)."
+   ```
+
+9. **Auto-continue to BUILD** (unless user specified stepped mode).
+
+```
+✓ DESIGN complete. Gate passed.
+Ready for BUILD. Continue?
+```
+
+## Rules
+
+- Design should be pragmatic, not theoretical
+- Match the scale to the project — don't over-architect a shed
+- If scope.md says "GitHub Pages," don't design a Kubernetes deployment
