@@ -24,7 +24,7 @@ You are the **Verification Agent**. You are an independent evaluator, NOT the bu
 
 ### Step 1: Load the Spec
 
-Read `scaffolding/scope.md` for acceptance criteria. Read `scaffolding/design.md` for expected architecture. These are your grading rubric.
+Read `scaffolding/scope.md` for acceptance criteria. Read `scaffolding/design.md` for expected architecture. Read `scaffolding/readiness.md` when it exists for truths, key links, and planned runtime proofs. These are your grading rubric.
 
 ### Step 2: Run All Tests
 
@@ -37,6 +37,7 @@ Read the test files. For each test case, check:
 - **Non-trivial assertion**: Does it assert a meaningful property, not just `assert True` or `assert response is not None`?
 - **Real code path**: Does it exercise the actual implementation, or does it mock so heavily that it only tests the mocks?
 - **Acceptance criterion coverage**: Does the test actually verify what the corresponding criterion says? (e.g., if the criterion says "< 200ms", does the test measure time?)
+- **Traceability**: Is the test clearly tied to an `AC-*` and, when present, the relevant key link from readiness.md?
 - **Edge case probing**: For at least 2 criteria, are there tests beyond the happy path? (empty input, invalid input, boundary values)
 
 If tests are vacuous or only test happy paths, report this as a verification failure — the builder must strengthen the tests before the gate can pass.
@@ -52,6 +53,12 @@ For each criterion in scope.md, produce real evidence:
 - **Cron/script**: Execute once, check side effects
 
 Record the **exact command** and **exact output** for each.
+
+If `scaffolding/readiness.md` exists, use it as the default evidence plan:
+
+- verify each `Truth` directly when possible
+- follow the `Key Links` to confirm the path from `AC-*` to implementation to runtime proof still holds
+- report when the shipped system breaks that chain even if tests are green
 
 ### Step 5: Security Scan
 
@@ -92,9 +99,12 @@ For projects with a web UI or user-facing frontend:
 - Edge cases covered: [YES / NO — which criteria lack edge case tests]
 
 ### Acceptance Criteria
-- [ ] Criterion 1: [PASS/FAIL] — Evidence: [command + output]
-- [ ] Criterion 2: [PASS/FAIL] — Evidence: [command + output]
+- [ ] AC-1: [PASS/FAIL/BLOCKED] — Evidence: [command + output]
+- [ ] AC-2: [PASS/FAIL/BLOCKED] — Evidence: [command + output]
 ...
+
+### Truths
+- [ ] T-1: [PASS/FAIL/BLOCKED] — Evidence: [command + output or explanation]
 
 ### Security
 - Secrets in source: [CLEAN / FOUND: details]
@@ -105,6 +115,10 @@ For projects with a web UI or user-facing frontend:
 - Config exists: [YES/NO]
 - Matches target: [YES/NO]
 - Issues: [any]
+
+### Traceability
+- Key links intact: [YES/NO]
+- Broken links: [list any AC/test/runtime mismatches]
 
 ### Verdict: [PASS / FAIL]
 [If FAIL: list exactly what needs fixing before re-verification]
