@@ -10,6 +10,7 @@ This repo is a **lights-out software engineering** harness. An AI agent runs aut
 .github/
   copilot-instructions.md   # This file — auto-loaded by Copilot
   agents/                    # Specialist agents with restricted tools
+  skills/                    # On-demand execution workflows used by prompts/instructions
   prompts/                   # Phase prompts
 preferences.md               # Stack + conventions (customize per project)
 docs/
@@ -97,6 +98,7 @@ Then run the **post-design gate** before proceeding.
 
 Write the actual code. Rules:
 
+- During BUILD, ITERATE -> BUILD, and verify-fix cycles, load and follow `.github/skills/build-discipline/SKILL.md`. It defines slice sizing, anti-rationalization checks, debugging, and change summaries.
 - Write integration/e2e test skeleton first — one failing test per acceptance criterion — then implement to make them pass
 - Reference `scaffolding/design.md` for architecture decisions (update it if implementation forces design changes)
 - Follow conventions in `preferences.md`
@@ -106,9 +108,20 @@ Write the actual code. Rules:
 
 Then run the **post-build gate** before proceeding.
 
-### Phase 3.5: RECONCILE
+### Phase 3.5: REVIEW
 
-After BUILD passes its gate — and before VERIFY — run the reconciliation agent (`/reconcile` or `@reconcile`) to detect and fix drift between scaffolding documents and the actual codebase. This is **mandatory for house/skyscraper** tiers and **recommended for sheds** after complex builds.
+After BUILD passes its gate, run the review agent (`/review` or `@review`) to audit the code before reconciliation and verification.
+
+- Review tests first, then implementation
+- Review across five axes: correctness, readability, architecture, security, performance
+- Label findings by severity: `Critical`, `Required`, `Consider`, `FYI`
+- If REVIEW finds blocking issues, the **main agent** fixes them using the build-discipline skill, then REVIEW runs again
+
+Then run the **post-review gate** before proceeding.
+
+### Phase 3.6: RECONCILE
+
+After REVIEW passes its gate — and before VERIFY — run the reconciliation agent (`/reconcile` or `@reconcile`) to detect and fix drift between scaffolding documents and the actual codebase.
 
 The reconcile agent checks six axes:
 
@@ -161,7 +174,7 @@ After delivery, when the client has feedback, change requests, or new requiremen
    - No architecture changes → BUILD directly
    - Minor architecture changes → quick DESIGN update → BUILD
    - Major re-architecture → full DESIGN → BUILD
-7. Pipeline runs normally from re-entry: BUILD → RECONCILE → VERIFY → DEPLOY
+7. Pipeline runs normally from re-entry: BUILD → REVIEW → RECONCILE → VERIFY → DEPLOY
 8. DELIVERY.md is updated with the new version's changes
 
 Iteration preserves all v1 history — scope.md is versioned, not overwritten. The audit trail is continuous.
@@ -211,6 +224,13 @@ Gates are machine-checkable. After each phase, check the gate conditions. If a g
 - [ ] Lockfile exists if project has dependencies (`uv.lock`, `Cargo.lock`, `package-lock.json`, etc.)
 - [ ] Code follows design.md directory structure and interfaces (manual check — reconcile agent runs next for deeper audit)
 
+## Post-Review Gate
+
+- [ ] No `Critical` review findings remain
+- [ ] No `Required` review findings remain
+- [ ] Any BUILD evidence invalidated by review-fix work has been re-run
+- [ ] Dead code, dependency, and maintainability concerns are resolved or explicitly documented
+
 ## Post-Verify Gate
 
 - [ ] All tests pass
@@ -247,6 +267,15 @@ Always prefer the cheapest feedback first:
 5. Does it work deployed?
 
 Don't write 500 lines and then check. Write 50, check, write 50, check.
+
+### BUILD Execution Contract
+
+During BUILD, iteration builds, and verify-fix work:
+
+- Use `.github/skills/build-discipline/SKILL.md` as the default execution workflow.
+- If a slice touches more than about 5 files or you write more than about 100 lines before verification, split it down further.
+- After each successful slice, record: `Changed`, `Not touched`, and `Concerns`.
+- When something fails, follow the skill's reproduce -> localize -> reduce -> root-cause -> fix -> guard -> verify loop before continuing.
 
 ### Scope Lock
 
@@ -430,7 +459,7 @@ This way `git log` is a complete, non-destructive record of everything the agent
 
 ### Run modes
 
-- **Auto** (default): Agent runs EXPAND → DESIGN → BUILD → RECONCILE → VERIFY → DEPLOY autonomously. Only stops on gate failure or after DEPLOY.
+- **Auto** (default): Agent runs EXPAND → DESIGN → BUILD → REVIEW → RECONCILE → VERIFY → DEPLOY autonomously. Only stops on gate failure or after DEPLOY.
 - **Stepped**: User says "stepped mode" — agent pauses after each gate for user confirmation. Use this for high-stakes or skyscraper-level projects.
 
 The user can switch modes at any time by saying "auto" or "stepped."
@@ -441,7 +470,7 @@ When the user says "build me X":
 
 ```
 EXPAND → gate → log → commit → DESIGN → gate → log → commit →
-BUILD → gate → log → commit → RECONCILE → log → commit →
+BUILD → gate → log → commit → REVIEW → gate → log → commit → RECONCILE → log → commit →
 VERIFY → gate → log → commit → DEPLOY → gate → log → commit →
 STOP (report to user)
 ```
@@ -450,7 +479,7 @@ When the user says "/iterate" on a shipped project:
 
 ```
 ITERATE (propose) → user confirms → version scope → re-enter pipeline →
-BUILD → gate → log → commit → RECONCILE → log → commit →
+BUILD → gate → log → commit → REVIEW → gate → log → commit → RECONCILE → log → commit →
 VERIFY → gate → log → commit → DEPLOY → gate → log → commit →
 STOP (report to user)
 ```

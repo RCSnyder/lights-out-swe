@@ -8,7 +8,7 @@ Run the reconciliation agent to cross-check all scaffolding documents against th
 
 Use this:
 
-- After BUILD, before VERIFY
+- After REVIEW, before VERIFY
 - After resuming from a session drop
 - After a BLOCKED → unblock cycle
 - Whenever documents feel stale

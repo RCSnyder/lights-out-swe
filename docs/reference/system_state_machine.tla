@@ -18,6 +18,10 @@ PipelineStages == {
     "Building",
     "BuildGatePassed",
     "BuildRetrying",
+    "Reviewing",
+    "ReviewGatePassed",
+    "ReviewFixing",
+    "ReviewRetrying",
     "Verifying",
     "VerifyGatePassed",
     "VerifyFixing",
@@ -84,12 +88,13 @@ CloneRepo ==
     /\ pipelineState' = "RepoCloned"
 
 (* Human opens the repo in VS Code. Copilot auto-loads
-   .github/copilot-instructions.md which contains the full harness
-   protocol. The six phase prompts in .github/prompts/ become
-   available as slash commands: /expand, /design, /build, /reconcile,
-   /verify, /deploy. Three specialist agents become available:
-   @reconcile, @verify (read-only evaluator), @explore (read-only
-   research). The agent now understands the closed-loop execution
+    .github/copilot-instructions.md which contains the full harness
+    protocol. The phase prompts in .github/prompts/ become available
+    as slash commands including /expand, /design, /build, /review,
+    /reconcile, /verify, and /deploy. Four specialist agents become
+    available: @review, @reconcile, @verify (read-only evaluator),
+    and @explore (read-only research). The agent now understands the
+    closed-loop execution
    model, gate rules, checkpointing protocol, and BEE-OS discipline. *)
 OpenInEditor ==
     /\ pipelineState = "RepoCloned"
@@ -318,25 +323,68 @@ TriggerComplexityBrake ==
     /\ pipelineState' = "ComplexityBrakeTriggered"
 
 \* ================================================================
-\* BUILD → RECONCILE transition (house/skyscraper) or BUILD → VERIFY (shed)
+\* BUILD → REVIEW transition
 \* ================================================================
 
-(* For house/skyscraper tiers: after BUILD gate passes, the reconcile
-   agent runs automatically before VERIFY. This catches drift introduced
-   during BUILD — the most common drift source — before the evaluator
-   grades against potentially stale specs. For shed tier: skip reconcile
-   and go directly to VERIFY. *)
-AutoContinueToReconcile ==
+(* After BUILD gate passes, the review agent runs automatically.
+   REVIEW catches correctness, readability, architecture, security,
+   and performance issues that the BUILD gate and test suite may miss. *)
+AutoContinueToReview ==
     /\ pipelineState = "BuildGatePassed"
+    /\ pipelineState' = "Reviewing"
+
+\* ================================================================
+\* PHASE 3.5: REVIEW — Multi-axis code review before reconcile
+\* ================================================================
+
+(* Review agent reads scope.md, design.md, tests, and relevant
+   implementation files. It audits the code across five axes:
+   correctness, readability, architecture, security, and performance.
+   Tests may be green while code is still too risky or confusing to
+   continue. Post-review gate: no Critical or Required findings remain,
+   review-fix changes have re-run invalidated BUILD evidence, and any
+   dead code or dependency concerns are resolved or documented. *)
+PassReviewGate ==
+    /\ pipelineState = "Reviewing"
+    /\ pipelineState' = "ReviewGatePassed"
+
+(* Review finds blocking issues. Because the review agent is read-only,
+   control returns to the main agent to fix one reproduced finding at a
+   time using the BUILD execution discipline. *)
+FailReviewGate ==
+    /\ pipelineState = "Reviewing"
+    /\ pipelineState' = "ReviewFixing"
+
+(* Main agent fixes the reported review findings, re-runs the relevant
+   proof, and then sends the code back through REVIEW. *)
+FixReviewFindings ==
+    /\ pipelineState = "ReviewFixing"
+    /\ pipelineState' = "Reviewing"
+
+(* Main agent cannot resolve the review findings after retries.
+   Escalates to the retry/block mechanism. *)
+EscalateReviewFailure ==
+    /\ pipelineState = "ReviewFixing"
+    /\ pipelineState' = "ReviewRetrying"
+
+(* ReviewRetrying exists only as a waypoint for BlockAfterThreeRetries.
+   If not blocked, the main agent attempts another focused fix cycle. *)
+RetryReview ==
+    /\ pipelineState = "ReviewRetrying"
+    /\ pipelineState' = "ReviewFixing"
+
+\* ================================================================
+\* REVIEW → RECONCILE transition
+\* ================================================================
+
+(* Once REVIEW passes, reconcile runs to sync scaffolding documents
+   against the post-review codebase. *)
+AutoContinueToReconcile ==
+    /\ pipelineState = "ReviewGatePassed"
     /\ pipelineState' = "Reconciling"
 
-(* Shed-tier shortcut: skip reconcile, go straight to verify. *)
-AutoContinueToVerify ==
-    /\ pipelineState = "BuildGatePassed"
-    /\ pipelineState' = "Verifying"
-
 \* ================================================================
-\* PHASE 3.5: RECONCILE — Cross-check documents against codebase
+\* PHASE 3.6: RECONCILE — Cross-check documents against codebase
 \* ================================================================
 
 (* Reconcile agent reads scope.md, design.md, log.md, preferences.md,
@@ -491,7 +539,7 @@ RetryDeploy ==
     /\ pipelineState' = "Deploying"
 
 \* ================================================================
-\* CROSS-CUTTING: Gate blockage (applies to all five phases)
+\* CROSS-CUTTING: Gate blockage (applies to gated phases and reconcile)
 \* ================================================================
 
 (* Any gate has now failed 3 times. Agent commits the broken state
@@ -507,7 +555,7 @@ RetryDeploy ==
    "BLOCKED: [what's wrong]. Options: [A, B, C]. Recommendation: [X]."
    Waits for human input before continuing. *)
 BlockAfterThreeRetries ==
-    /\ pipelineState \in {"ExpandRetrying", "DesignRetrying", "BuildRetrying", "VerifyRetrying", "DeployRetrying", "ReconcileBlocked"}
+    /\ pipelineState \in {"ExpandRetrying", "DesignRetrying", "BuildRetrying", "ReviewRetrying", "VerifyRetrying", "DeployRetrying", "ReconcileBlocked"}
     /\ pipelineState' = "BlockedOnGate"
 
 (* Human provides the missing input: answers a question, changes scope,
@@ -557,13 +605,13 @@ ResolveComplexityBrake ==
    Used for high-stakes or skyscraper-tier projects where human review
    between phases is worth the latency cost. *)
 PauseForSteppedMode ==
-    /\ pipelineState \in {"ExpandGatePassed", "DesignGatePassed", "BuildGatePassed", "VerifyGatePassed"}
+    /\ pipelineState \in {"ExpandGatePassed", "DesignGatePassed", "BuildGatePassed", "ReviewGatePassed", "VerifyGatePassed"}
     /\ pipelineState' = "SteppedModePaused"
 
-(* REVIEW: In practice, only one of the following four transitions is
+(* REVIEW: In practice, only one of the following five transitions is
    valid depending on which gate-passed state preceded the pause.
    With a single state variable we cannot track which phase paused,
-   so all four are modeled as possible. The agent determines the
+   so all five are modeled as possible. The agent determines the
    correct next phase from scaffolding/log.md. *)
 ResumeToDesign ==
     /\ pipelineState = "SteppedModePaused"
@@ -573,6 +621,10 @@ ResumeToBuild ==
     /\ pipelineState = "SteppedModePaused"
     /\ pipelineState' = "Building"
 
+ResumeToReview ==
+    /\ pipelineState = "SteppedModePaused"
+    /\ pipelineState' = "Reviewing"
+
 ResumeToVerify ==
     /\ pipelineState = "SteppedModePaused"
     /\ pipelineState' = "Verifying"
@@ -581,9 +633,8 @@ ResumeToDeploy ==
     /\ pipelineState = "SteppedModePaused"
     /\ pipelineState' = "Deploying"
 
-(* In stepped mode after BUILD gate passes, human can review before
-   reconcile runs. Useful for reviewing what was built before the
-   reconcile agent checks for drift. *)
+(* In stepped mode after REVIEW gate passes, human can review the
+    review outcome before reconcile runs. *)
 ResumeToReconcile ==
     /\ pipelineState = "SteppedModePaused"
     /\ pipelineState' = "Reconciling"
@@ -605,7 +656,7 @@ ResumeToReconcile ==
    immediate next step. This ensures the next session can pick up
    cleanly. *)
 DropSession ==
-    /\ pipelineState \in {"Expanding", "Designing", "Building", "Reconciling", "Verifying", "VerifyFixing", "Deploying"}
+    /\ pipelineState \in {"Expanding", "Designing", "Building", "Reviewing", "ReviewFixing", "Reconciling", "Verifying", "VerifyFixing", "Deploying"}
     /\ pipelineState' = "SessionDropped"
 
 (* Human opens a new chat session on the same repo. Agent must recover
@@ -627,7 +678,7 @@ StartContextRecovery ==
    agent may choose to reconcile, but this is a judgment call, not a
    mandatory transition.
    
-   The following six transitions represent the possible resume points
+    The following seven transitions represent the possible resume points
    based on what artifacts and code exist. *)
 
 (* No scope.md yet, or scope.md exists but was never committed as
@@ -648,8 +699,14 @@ RecoverToBuild ==
     /\ pipelineState = "ContextRecovering"
     /\ pipelineState' = "Building"
 
-(* Code exists and build gate passed but verification is incomplete.
-   Resume VERIFY. *)
+(* Code exists and build gate passed but review is incomplete.
+    Resume REVIEW. *)
+RecoverToReview ==
+     /\ pipelineState = "ContextRecovering"
+     /\ pipelineState' = "Reviewing"
+
+(* Code has passed review or reconcile and verification is incomplete.
+    Resume VERIFY. *)
 RecoverToVerify ==
     /\ pipelineState = "ContextRecovering"
     /\ pipelineState' = "Verifying"
@@ -660,8 +717,8 @@ RecoverToDeploy ==
     /\ pipelineState = "ContextRecovering"
     /\ pipelineState' = "Deploying"
 
-(* Build was complete but reconcile was interrupted or never ran.
-   Resume RECONCILE before proceeding to VERIFY. *)
+(* Review was complete but reconcile was interrupted or never ran.
+    Resume RECONCILE before proceeding to VERIFY. *)
 RecoverToReconcile ==
     /\ pipelineState = "ContextRecovering"
     /\ pipelineState' = "Reconciling"
@@ -685,6 +742,10 @@ ManualReconcileFromBuilding ==
     /\ pipelineState = "Building"
     /\ pipelineState' = "Reconciling"
 
+ManualReconcileFromReviewing ==
+    /\ pipelineState = "Reviewing"
+    /\ pipelineState' = "Reconciling"
+
 ManualReconcileFromVerifying ==
     /\ pipelineState = "Verifying"
     /\ pipelineState' = "Reconciling"
@@ -698,6 +759,10 @@ ResumeAfterReconcileToDesigning ==
 ResumeAfterReconcileToBuilding ==
     /\ pipelineState = "Reconciling"
     /\ pipelineState' = "Building"
+
+ResumeAfterReconcileToReviewing ==
+    /\ pipelineState = "Reconciling"
+    /\ pipelineState' = "Reviewing"
 
 ResumeAfterReconcileToVerifying ==
     /\ pipelineState = "Reconciling"
@@ -855,8 +920,13 @@ Next ==
     \/ FailBuildGate
     \/ RetryBuild
     \/ TriggerComplexityBrake
+    \/ AutoContinueToReview
+    \/ PassReviewGate
+    \/ FailReviewGate
+    \/ FixReviewFindings
+    \/ EscalateReviewFailure
+    \/ RetryReview
     \/ AutoContinueToReconcile
-    \/ AutoContinueToVerify
     \/ ReconcileClean
     \/ ReconcileRepaired
     \/ ReconcileBlocked
@@ -877,6 +947,7 @@ Next ==
     \/ PauseForSteppedMode
     \/ ResumeToDesign
     \/ ResumeToBuild
+    \/ ResumeToReview
     \/ ResumeToVerify
     \/ ResumeToDeploy
     \/ ResumeToReconcile
@@ -885,14 +956,17 @@ Next ==
     \/ RecoverToExpand
     \/ RecoverToDesign
     \/ RecoverToBuild
+    \/ RecoverToReview
     \/ RecoverToVerify
     \/ RecoverToDeploy
     \/ RecoverToReconcile
     \/ ManualReconcileFromDesigning
     \/ ManualReconcileFromBuilding
+    \/ ManualReconcileFromReviewing
     \/ ManualReconcileFromVerifying
     \/ ResumeAfterReconcileToDesigning
     \/ ResumeAfterReconcileToBuilding
+    \/ ResumeAfterReconcileToReviewing
     \/ ResumeAfterReconcileToVerifying
     \* Distill (on-demand, pre-expand or pre-iterate)
     \/ DistillFromConfigured

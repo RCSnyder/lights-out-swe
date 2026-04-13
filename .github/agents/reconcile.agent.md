@@ -9,7 +9,7 @@ Drift is the silent failure mode of spec-driven systems. The builder changes cod
 
 ## When to Run
 
-- After BUILD, before VERIFY (mandatory for house/skyscraper)
+- After REVIEW, before VERIFY
 - After context recovery from a session drop
 - After a BLOCKED → unblock cycle that changed scope or design
 - Whenever a human or agent suspects documents are stale

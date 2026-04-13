@@ -57,6 +57,9 @@ If the verify agent finds failures:
 
 1. The verify agent produces a **Verification Report** with exact reproduction steps
 2. Control returns to the **main agent** (with edit capability) to fix the issues
+   - Before fixing anything, load `.github/skills/build-discipline/SKILL.md`
+   - Fix one reproduced failure at a time using the skill's root-cause debugging loop
+   - Re-run the targeted failing check before returning to the full verify pass
 3. After fixes, the verify agent re-runs verification
 4. This cycle repeats up to 3 times before escalating to BLOCKED
 

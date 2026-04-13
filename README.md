@@ -38,7 +38,7 @@ The agent takes it from there.
 1. Open the project in VS Code
 2. Start a Copilot chat in agent mode
 3. Say "build me [description of what you want]"
-4. Agent runs autonomously: EXPAND → DESIGN → BUILD → RECONCILE → VERIFY → DEPLOY
+4. Agent runs autonomously: EXPAND → DESIGN → BUILD → REVIEW → RECONCILE → VERIFY → DEPLOY
 5. At each phase, the agent checks a gate, logs results to `scaffolding/log.md`, and git-commits a checkpoint
 6. If a gate passes → agent auto-continues to the next phase
 7. If a gate fails 3× → agent STOPS and reports what's blocking
@@ -52,15 +52,16 @@ Say "stepped mode" for high-stakes projects. Agent pauses after each gate for yo
 
 ### The Phases
 
-| Phase         | Input         | Output                  | Gate Checks                                                                 |
-| ------------- | ------------- | ----------------------- | --------------------------------------------------------------------------- |
-| **EXPAND**    | "build me X"  | `scaffolding/scope.md`  | Has acceptance criteria, deployment target, stack, smallest useful version  |
-| **DESIGN**    | scope.md      | `scaffolding/design.md` | Has directory structure, interfaces, error handling for integrations        |
-| **BUILD**     | design.md     | Working code            | Compiles, tests pass, no secrets in code, matches architecture              |
-| **RECONCILE** | Code + docs   | Synced scaffolding      | Documents match codebase, no spec-violating drift                           |
-| **VERIFY**    | Running code  | Verified system         | Tests pass, runs locally, acceptance criteria met, no security issues       |
-| **DEPLOY**    | Verified code | Live system             | Deployed, accessible, README + DELIVERY.md exist, data persistence verified |
-| **ITERATE**   | Feedback      | Next version            | User confirms proposal, scope versioned, re-enters pipeline at right point  |
+| Phase         | Input         | Output                  | Gate Checks                                                                           |
+| ------------- | ------------- | ----------------------- | ------------------------------------------------------------------------------------- |
+| **EXPAND**    | "build me X"  | `scaffolding/scope.md`  | Has acceptance criteria, deployment target, stack, smallest useful version            |
+| **DESIGN**    | scope.md      | `scaffolding/design.md` | Has directory structure, interfaces, error handling for integrations                  |
+| **BUILD**     | design.md     | Working code            | Compiles, tests pass, no secrets in code, matches architecture                        |
+| **REVIEW**    | Built code    | Review report           | No blocking correctness, readability, architecture, security, or performance findings |
+| **RECONCILE** | Code + docs   | Synced scaffolding      | Documents match codebase, no spec-violating drift                                     |
+| **VERIFY**    | Running code  | Verified system         | Tests pass, runs locally, acceptance criteria met, no security issues                 |
+| **DEPLOY**    | Verified code | Live system             | Deployed, accessible, README + DELIVERY.md exist, data persistence verified           |
+| **ITERATE**   | Feedback      | Next version            | User confirms proposal, scope versioned, re-enters pipeline at right point            |
 
 ### Using Prompt Files
 
@@ -71,7 +72,8 @@ The `.github/prompts/` directory has one prompt file per phase. You can invoke t
 - `/expand` — Generate scope from a project idea (reads `docs/input/` if present)
 - `/design` — Generate architecture from scope
 - `/build` — Build code from design
-- `/reconcile` — Sync scaffolding docs with actual codebase (auto-runs after BUILD for house/skyscraper)
+- `/review` — Audit built code before reconciliation and verification
+- `/reconcile` — Sync scaffolding docs with actual codebase after review
 - `/verify` — Run verification checks (delegates to the read-only verify agent)
 - `/deploy` — Deploy, write project README and DELIVERY.md
 - `/iterate` — Post-delivery: propose and build the next version from feedback
@@ -82,15 +84,18 @@ Or just let the instructions in `.github/copilot-instructions.md` drive the full
 
 The `.github/agents/` directory has specialist agents with restricted tool access:
 
-| Agent        | Tools                       | Purpose                                                    |
-| ------------ | --------------------------- | ---------------------------------------------------------- |
-| `@reconcile` | read, edit, search, execute | Detect and fix drift between scaffolding docs and codebase |
-| `@verify`    | read, search, execute       | Independent evaluator — can run code but NOT edit it       |
-| `@explore`   | read, search                | Read-only codebase exploration and Q&A                     |
+| Agent        | Tools                       | Purpose                                                                                 |
+| ------------ | --------------------------- | --------------------------------------------------------------------------------------- |
+| `@review`    | read, search, execute       | Independent code review across correctness, architecture, security, and maintainability |
+| `@reconcile` | read, edit, search, execute | Detect and fix drift between scaffolding docs and codebase                              |
+| `@verify`    | read, search, execute       | Independent evaluator — can run code but NOT edit it                                    |
+| `@explore`   | read, search                | Read-only codebase exploration and Q&A                                                  |
 
-**Why agents?** Tool restrictions enforce behavioral boundaries. The verify agent _cannot_ edit source code, which prevents the "grade your own homework" problem. The explore agent _cannot_ modify anything, making it safe for context recovery and research.
+**Why agents?** Tool restrictions enforce behavioral boundaries. The review and verify agents _cannot_ edit source code, which prevents the "grade your own homework" problem. The explore agent _cannot_ modify anything, making it safe for context recovery and research.
 
-You can invoke agents directly (`@verify`, `@reconcile`, `@explore`) or let the prompts/pipeline invoke them automatically.
+You can invoke agents directly (`@review`, `@verify`, `@reconcile`, `@explore`) or let the prompts/pipeline invoke them automatically.
+
+The `.github/skills/` directory holds reusable execution workflows that prompts and instructions can load on demand. The first one in this repo, `build-discipline`, tightens the BUILD and verify-fix loops around small slices, proof-first changes, and root-cause debugging.
 
 ## File Structure
 
@@ -98,16 +103,21 @@ You can invoke agents directly (`@verify`, `@reconcile`, `@explore`) or let the 
 .github/
   copilot-instructions.md   # The pipeline loop + discipline rules (auto-loaded by Copilot)
   agents/
+    review.agent.md          # Independent code review before reconcile/verify
     reconcile.agent.md       # Drift detection + document sync
     verify.agent.md          # Independent evaluator (read-only + execute)
     explore.agent.md         # Read-only codebase exploration
+  skills/
+    build-discipline/
+      SKILL.md               # On-demand BUILD execution discipline for thin slices and debugging
   prompts/
     distill.prompt.md        # Pre-expand: structure raw input materials
     audit-stack.prompt.md    # Pre-expand: validate stack choices against problem domain
     expand.prompt.md         # Phase 1: scope generation (reads docs/input/)
     design.prompt.md         # Phase 2: architecture from scope
     build.prompt.md          # Phase 3: code from design
-    reconcile.prompt.md      # Phase 3.5: sync docs with code
+    review.prompt.md         # Phase 3.5: multi-axis code review before reconcile
+    reconcile.prompt.md      # Phase 3.6: sync docs with code
     verify.prompt.md         # Phase 4: testing + acceptance
     deploy.prompt.md         # Phase 5: deployment + README + DELIVERY.md
     iterate.prompt.md        # Phase 6: post-delivery version iteration
@@ -161,6 +171,20 @@ All tiers get the same DELIVERY.md structure — depth scales naturally with com
 
 The file formats (`.github/copilot-instructions.md`, `.prompt.md`, `.agent.md`) are GitHub Copilot-specific. The protocol — gated phases, verification ladder, scope lock, evidence rule — is tool-agnostic. To port to a different agentic IDE, translate the instructions and phase prompts to that tool's format. The [state machine spec](docs/reference/system_state_machine.tla) is the canonical, tool-independent definition.
 
+### Durable Value
+
+The durable value of this repo is the **control loop**, not any one tactical instruction set.
+
+The parts most likely to remain useful as models improve are the process invariants:
+
+- explicit phase boundaries and gates
+- persistent provenance in `scaffolding/` and `docs/input/`
+- independent REVIEW / RECONCILE / VERIFY roles
+- non-destructive checkpointing in git
+- the formal transition model in the [state machine spec](docs/reference/system_state_machine.tla)
+
+The more tactical parts — slice guidance, anti-rationalization checks, framework/source nudges, and similar execution scaffolding — are intentionally modular. Some of those ideas were adapted from Agent Skills [4], but in this repo they are helpers around the loop, not the product itself. As models absorb more of that a priori engineering discipline, those tactical layers should be audited, simplified, or removed without changing the core harness.
+
 ### Scope
 
 This system is designed to see how far **one agent** can go autonomously — solo developer, single agent, closed loop. Multi-agent coordination, PR-based workflows, and team code review processes are out of scope.
@@ -171,7 +195,7 @@ This system is designed to see how far **one agent** can go autonomously — sol
 - **Coordinator prompt** (`/parallel-build`): creates worktrees (`git worktree add`), generates per-slice scope files with assigned criteria + interface contracts, opens windows (`code <path>`)
 - **Per-slice execution**: each agent runs a scoped BUILD (subset of criteria, full design.md for interface reference, own branch)
 - **Sequential merge**: slices merge to main in declared order (schema-owner first), conflicts resolved against interface contracts
-- **Post-merge gate**: full post-build gate runs on merged result, then normal pipeline continues (RECONCILE → VERIFY → DEPLOY)
+- **Post-merge gate**: full post-build gate runs on merged result, then normal pipeline continues (REVIEW → RECONCILE → VERIFY → DEPLOY)
 - **Failure model**: any slice BLOCKED → coordinator stops all slices, reports. No partial merges.
 - **New TLA+ states**: `SlicePlanning`, `ParallelBuilding`, `SliceBlocked`, `Merging`
 
@@ -195,6 +219,8 @@ The pipeline enforces BEE-OS (Builder-Grade Engineering OS) discipline:
 
 - **Evidence Rule** — No progress without checkable evidence (compiles, tests pass, HTTP 200)
 - **Verification Ladder** — Cheapest feedback first (parse → unit → test suite → e2e → deployed)
+- **Build Discipline Skill** — BUILD and verify-fix work use a reusable skill for thin slices, anti-rationalization, and root-cause debugging
+- **Review Gate** — REVIEW catches correctness, architecture, security, and maintainability issues that tests can miss
 - **Scope Lock** — Only build what's in scope.md. Everything else goes to a Deferred section.
 - **Complexity Brake** — Auto-stop if file count exceeds 2x design, single file exceeds 300 lines, or 3rd approach to same problem
 - **STOP Conditions** — Agent halts and reports when gates fail 3x, external deps break, or safety is uncertain
@@ -221,8 +247,8 @@ When the client has feedback or you want to evolve a shipped product:
 5. You confirm which changes to build (this is a business decision, not auto-continue)
 6. Agent versions the scope, re-enters the pipeline at the right point, and builds
 
-```
-/iterate → proposal → user confirms → BUILD → RECONCILE → VERIFY → DEPLOY
+```text
+/iterate → proposal → user confirms → BUILD → REVIEW → RECONCILE → VERIFY → DEPLOY
 ```
 
 Scope history is preserved — v1 criteria stay in scope.md under a version header. The audit trail is continuous across iterations.
@@ -264,18 +290,20 @@ The system has two irreducibly human states, formally specified in the [state ma
 
 These two states form the **outer loop**:
 
-```
+```text
 Ideating → [agent pipeline] → ValidatingPMF → Ideating → [iterate pipeline] → ValidatingPMF → ...
 ```
 
-The agent's inner loop (EXPAND → DEPLOY) optimizes against acceptance criteria. The outer loop validates whether those were the right criteria. Every other state in the system — expanding, designing, building, verifying, deploying — is agent-executable. These two are not. They are where the engineering judgment lives.
+The agent's inner loop (EXPAND → DEPLOY) optimizes against acceptance criteria. The outer loop validates whether those were the right criteria. Every other state in the system — expanding, designing, building, reviewing, reconciling, verifying, deploying — is agent-executable. These two are not. They are where the engineering judgment lives.
 
 The system is designed around this fact. The mandatory human pause after DEPLOY exists because the agent has no way to evaluate whether it built the right thing — only whether it built the thing right. The `/iterate` confirmation gate exists because iteration is a business decision informed by PMF signals the agent cannot observe. The `docs/input/` directory exists because the most valuable engineering work — translating human problems into machine-checkable specifications — happens in conversation, not in code generation.
 
 ## Citations
 
-[1] A. Karpathy, "autoresearch," GitHub, 2025. [Online]. Available: https://github.com/karpathy/autoresearch
+[1] A. Karpathy, "autoresearch," GitHub, 2025. [Online]. Available: [github.com/karpathy/autoresearch](https://github.com/karpathy/autoresearch)
 
-[2] P. Rajasekaran, "Harness design for long-running application development," Anthropic Engineering, Mar. 2026. [Online]. Available: https://www.anthropic.com/engineering/harness-design-long-running-apps
+[2] P. Rajasekaran, "Harness design for long-running application development," Anthropic Engineering, Mar. 2026. [Online]. Available: [anthropic.com/engineering/harness-design-long-running-apps](https://www.anthropic.com/engineering/harness-design-long-running-apps)
 
-[3] J. Blocklove et al., "Design Conductor: An agent autonomously builds a 1.5 GHz Linux-capable RISC-V CPU," arXiv:2603.08716 [cs.AR], Mar. 2026. [Online]. Available: https://arxiv.org/abs/2603.08716
+[3] J. Blocklove et al., "Design Conductor: An agent autonomously builds a 1.5 GHz Linux-capable RISC-V CPU," arXiv:2603.08716 [cs.AR], Mar. 2026. [Online]. Available: [arxiv.org/abs/2603.08716](https://arxiv.org/abs/2603.08716)
+
+[4] A. Osmani et al., "Agent Skills," GitHub, 2026. [Online]. Available: [github.com/addyosmani/agent-skills](https://github.com/addyosmani/agent-skills)

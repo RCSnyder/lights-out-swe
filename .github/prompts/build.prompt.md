@@ -9,20 +9,26 @@ Read `scaffolding/scope.md` and `scaffolding/design.md`. Write the actual softwa
 
 1. Read both scaffolding docs fully
 2. Read `preferences.md` if it exists
-3. **Write the integration/e2e test skeleton first** — before any implementation. This is the oracle that guides all subsequent work:
+3. Load and follow `.github/skills/build-discipline/SKILL.md` throughout BUILD. It is the default workflow for slice sizing, test-first implementation, debugging, and change summaries.
+4. **Write the integration/e2e test skeleton first** — before any implementation. This is the oracle that guides all subsequent work:
    - Create the test file(s) with one test case per acceptance criterion
    - Each test should call the real entry point (CLI, API endpoint, function) and assert the expected outcome
    - **For external integrations**: use the test strategy declared in design.md (mock / recorded / live). If design.md says "mock," set up fakes. If "recorded," use record-replay fixtures. If "live," tests call the real API (mark these as integration tests that can be skipped offline).
    - Tests will fail initially — that's the point. They define "done."
-4. Build in **vertical slices** — get one acceptance criterion working end-to-end before moving to the next:
+5. Build in **vertical slices** — get one acceptance criterion working end-to-end before moving to the next:
    a. Pick the most foundational acceptance criterion
    b. **Before writing new code, read existing code in the project.** Match the style, patterns, naming conventions, and error handling approach already established. Consistency across vertical slices matters — especially when sessions restart and a different model instance continues the work.
-   c. Write the code for it
-   d. **Verification ladder**: Does it compile? → Does the unit work? → Does the test pass?
-   e. Only move to the next criterion after this one passes
-   f. Repeat
-5. Follow the directory structure from design.md exactly
-6. **Scope lock**: Only build what's in scope.md. If you think something else is needed, note it under "## Deferred" in scope.md and move on.
+   c. Keep the slice small enough to verify quickly. If it would touch more than about 5 files or you write more than about 100 lines before checking the verification ladder, split it again.
+   d. Write the code for it
+   e. **Verification ladder**: Does it compile? → Does the unit work? → Does the test pass?
+   f. Record a brief handoff note before moving on:
+   - `Changed`: what this slice altered
+   - `Not touched`: nearby code intentionally left alone
+   - `Concerns`: risks or follow-ups worth watching
+     g. Only move to the next criterion after this one passes
+     h. Repeat
+6. Follow the directory structure from design.md exactly
+7. **Scope lock**: Only build what's in scope.md. If you think something else is needed, note it under "## Deferred" in scope.md and move on.
 
 ## Internal QRSPI (think, don't document)
 
@@ -76,7 +82,7 @@ Log the result to `scaffolding/log.md`:
 - **Evidence**: [list each acceptance criterion with pass/fail]
 - **Changes**: [files created/modified]
 - **Retries**: [total gate attempts this phase]
-- **Next**: RECONCILE (house/skyscraper) or VERIFY (shed)
+- **Next**: REVIEW
 ```
 
 Git checkpoint:
@@ -85,19 +91,31 @@ Git checkpoint:
 git add -A && git commit -m "feat(build): implement [project] core functionality" -m "[list acceptance criteria with pass/fail status]\nGate: post-build PASS (attempt N)."
 ```
 
-**Auto-continue to RECONCILE** (house/skyscraper) or **VERIFY** (shed), unless user specified stepped mode.
+**Auto-continue to REVIEW** unless the user specified stepped mode.
 
 ## Debugging Protocol
 
 When a test or build fails, **diagnose before fixing**. Never blindly retry.
 
-1. **Observe**: What exactly failed? Copy the error output.
-2. **Analyze**: Trace the failure to a root cause. Read the relevant code. If the error is in runtime behavior, add logging or inspect state.
-3. **Document**: State the root cause in one sentence before writing any fix.
-4. **Fix**: Make the minimal change that addresses the root cause.
-5. **Verify**: Run the failing test again. Confirm it passes and no other tests broke.
+1. **Observe**: Capture the exact failure output.
+2. **Reproduce**: Make the failure happen reliably before changing code.
+3. **Localize and reduce**: Narrow the failing layer and reduce to the smallest case that still fails.
+4. **Document**: State the root cause in one sentence before writing any fix.
+5. **Fix**: Make the minimal change that removes that root cause.
+6. **Guard**: Keep or add the regression test so the same failure cannot slip back in.
+7. **Verify**: Re-run the targeted failing check, then broader verification.
 
 If you cannot identify the root cause after 3 analysis attempts, STOP and report.
+
+## Red Flags
+
+- More than about 100 lines written before verification
+- Multiple unrelated concerns mixed into one slice
+- Tests added only after the code already appears complete
+- Silent design drift or dependency changes
+- "While I'm here" edits outside the current acceptance criterion
+
+If you hit a red flag, shrink the slice and re-establish proof before continuing.
 
 ## Living Design Document
 

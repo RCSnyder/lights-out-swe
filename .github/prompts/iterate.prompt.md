@@ -110,7 +110,7 @@ Based on the scope of changes:
 - **Minor architecture changes** → Quick DESIGN update, then BUILD
 - **Major re-architecture** → Full DESIGN phase, then BUILD
 
-The pipeline runs normally from the re-entry point: BUILD → RECONCILE → VERIFY → DEPLOY.
+The pipeline runs normally from the re-entry point: BUILD → REVIEW → RECONCILE → VERIFY → DEPLOY.
 
 ### Step 7: Post-iteration
 
