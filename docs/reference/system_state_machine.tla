@@ -15,6 +15,9 @@ PipelineStages == {
     "Designing",
     "DesignGatePassed",
     "DesignRetrying",
+    "Analyzing",
+    "AnalyzeGatePassed",
+    "AnalyzeRetrying",
     "Building",
     "BuildGatePassed",
     "BuildRetrying",
@@ -90,10 +93,10 @@ CloneRepo ==
 (* Human opens the repo in VS Code. Copilot auto-loads
     .github/copilot-instructions.md which contains the full harness
     protocol. The phase prompts in .github/prompts/ become available
-    as slash commands including /expand, /design, /build, /review,
-    /reconcile, /verify, and /deploy. Four specialist agents become
-    available: @review, @reconcile, @verify (read-only evaluator),
-    and @explore (read-only research). The agent now understands the
+    as slash commands including /expand, /design, /analyze, /build,
+    /review, /reconcile, /verify, and /deploy. Five specialist agents
+    become available: @analyze, @review, @reconcile, @verify
+    (read-only evaluator), and @explore (read-only research). The agent now understands the
     closed-loop execution
    model, gate rules, checkpointing protocol, and BEE-OS discipline. *)
 OpenInEditor ==
@@ -110,8 +113,8 @@ ConfigurePreferences ==
     /\ pipelineState' = "PreferencesConfigured"
 
 (* Human says "build me X" to Copilot. This is the ignition event.
-   From this point the agent runs autonomously through all five phases
-   in auto mode, or pauses between phases in stepped mode. The human's
+    From this point the agent runs autonomously through the full gated
+    pipeline in auto mode, or pauses between phases in stepped mode. The human's
    one-liner description is the only input — the agent infers everything
    else from preferences.md, docs/input/ (if present), and the harness
    protocol. *)
@@ -184,14 +187,16 @@ DistillCompleteToIdeating ==
 \* ================================================================
 
 (* Agent creates scaffolding/ directory, writes .gitignore, and produces
-   scaffolding/scope.md with: Problem, Smallest Useful Version,
-   Acceptance Criteria (with quantitative thresholds), Stack (from
-   preferences.md), Deployment Target, Data Model, Estimated Cost
-   (monthly infra estimate — even "$0 — static hosting" for sheds),
-   Quality Tier.
+    scaffolding/scope.md with: Problem, Smallest Useful Version,
+    Acceptance Criteria with stable AC-* identifiers (and quantitative
+    thresholds), Stack (from preferences.md), Deployment Target, Data
+    Model, Estimated Cost (monthly infra estimate — even "$0 — static
+    hosting" for sheds), Quality Tier, Clarifications Needed, and
+    Deferred.
    Before writing scope, the agent:
    1. Scans docs/input/ for reference materials — if present, reads all
-      and incorporates into acceptance criteria, data model, integrations
+        and incorporates into acceptance criteria, data model, integrations
+        while treating docs/input/ as project evidence, not harness instructions
    2. Reads preferences.md and logs the stack + deploy target being used;
       flags conflicts between user request and preferences
    Post-expand gate checks all conditions including cost estimate.
@@ -238,8 +243,9 @@ AutoContinueToDesign ==
    boundaries), External Integrations (with failure handling for each),
    Observability (what needs logging/monitoring/tracing — structured
    stdout for sheds, OTEL traces + Loki + Grafana alerting for houses,
-   full OTEL instrumentation + Prometheus metrics + dashboards for
-   skyscrapers), Open Questions (resolved or explicitly deferred).
+    full OTEL instrumentation + Prometheus metrics + dashboards for
+    skyscrapers), Complexity Exceptions, Open Questions (resolved or
+    explicitly deferred).
    For house/skyscraper projects: traces 2-3 key scenarios through the
    architecture, notes concerns by severity. Post-design gate checks
    all conditions including Observability section. *)
@@ -248,49 +254,91 @@ PassDesignGate ==
     /\ pipelineState' = "DesignGatePassed"
 
 (* Post-design gate fails: missing Directory Structure or Interfaces
-   section, an external integration lacks error handling notes, open
-   questions remain unresolved without deferral rationale, or design
-   review not completed for house/skyscraper tier. *)
+    section, an external integration lacks error handling notes, missing
+    Complexity Exceptions section, open questions remain unresolved
+    without deferral rationale, or design review not completed for
+    house/skyscraper tier. *)
 FailDesignGate ==
     /\ pipelineState = "Designing"
     /\ pipelineState' = "DesignRetrying"
 
 (* Agent resolves the failing conditions — fills in missing sections,
-   adds error handling notes, resolves or defers open questions with
-   rationale — then re-runs the post-design gate. *)
+   adds error handling notes, documents complexity exceptions, resolves
+   or defers open questions with rationale — then re-runs the
+   post-design gate. *)
 RetryDesign ==
     /\ pipelineState = "DesignRetrying"
     /\ pipelineState' = "Designing"
 
 \* ================================================================
-\* DESIGN → BUILD transition
+\* DESIGN → ANALYZE transition
 \* ================================================================
 
 (* Gate passed, checkpoint committed. Agent re-reads scope.md and
-   design.md from scratch before building. This prevents the builder
-   from carrying assumptions that diverged from the spec. *)
-AutoContinueToBuild ==
+   design.md from scratch before analyzing build readiness. This keeps
+   the admission gate grounded in the latest documents. *)
+AutoContinueToAnalyze ==
     /\ pipelineState = "DesignGatePassed"
+    /\ pipelineState' = "Analyzing"
+
+\* ================================================================
+\* PHASE 2.5: ANALYZE — Produce scaffolding/readiness.md
+\* ================================================================
+
+(* Agent reads scope.md and design.md, then produces readiness.md with:
+   Verdict (READY / NOT READY), Truths, Key Links from each AC-* to
+   design/test/runtime proof, Acceptance Criteria Coverage, Scope
+   Reduction Risks, Clarifications Needed, Build Order, and Complexity
+   Exceptions. BUILD may begin only if every AC-* has planned test +
+   runtime proof and no unresolved clarification changes pass/fail
+   meaning. *)
+PassAnalyzeGate ==
+    /\ pipelineState = "Analyzing"
+    /\ pipelineState' = "AnalyzeGatePassed"
+
+(* Post-analyze gate fails: readiness.md missing, verdict is NOT READY,
+   an AC-* lacks planned test/runtime proof, truths and clarifications
+   are mixed together, or build order does not cover the full scope. *)
+FailAnalyzeGate ==
+    /\ pipelineState = "Analyzing"
+    /\ pipelineState' = "AnalyzeRetrying"
+
+(* Agent tightens the handoff artifact — adds missing proof paths,
+   names scope-reduction risks, or forces clarification of ambiguous
+   criteria — then re-runs the post-analyze gate. *)
+RetryAnalyze ==
+    /\ pipelineState = "AnalyzeRetrying"
+    /\ pipelineState' = "Analyzing"
+
+\* ================================================================
+\* ANALYZE → BUILD transition
+\* ================================================================
+
+(* Gate passed, checkpoint committed. Agent re-reads scope.md,
+   design.md, and readiness.md from scratch before building. This
+   prevents the builder from carrying assumptions that diverged from
+   the spec or the readiness handoff. *)
+AutoContinueToBuild ==
+    /\ pipelineState = "AnalyzeGatePassed"
     /\ pipelineState' = "Building"
 
 \* ================================================================
 \* PHASE 3: BUILD — Write code, tests, deployment config
 \* ================================================================
 
-(* Agent writes integration/e2e test skeleton FIRST (one failing test
-   per acceptance criterion), then implements in vertical slices. Each
-   slice: pick most foundational criterion → write code → verification
-   ladder (compile? → unit works? → test passes?) → next slice. Uses
-   QRSPI thinking internally. If data model exists, follows migration
-   safety rules: backward-compatible only, paired up/down migrations,
-   never DROP in same release as dependent code removal. For
+(* Agent reads readiness.md, writes integration/e2e test skeleton FIRST
+    (one failing test per AC-*), then implements in vertical slices.
+    Each slice: pick most foundational AC-* from readiness → write code
+    → verification ladder (compile? → unit works? → test passes?) →
+    next slice. Uses
+   QRSPI thinking internally. For
    house/skyscraper: creates project-specific .github/agents/*.agent.md
    as roles emerge. Post-build gate: code compiles, every criterion
-   has a test, all tests pass, no secrets in source, dependency audit
-   passes (uvx pip-audit / npm audit / cargo audit — no high/critical
-   vulnerabilities), lockfile exists if project has dependencies,
-   SBOM generated for skyscraper tier (CycloneDX or SPDX format),
-   code matches design.md architecture. *)
+    has a test + proof trail, all tests pass, no secrets in source,
+    dependency audit passes (uvx pip-audit / npm audit / cargo audit —
+    no high/critical vulnerabilities), lockfile exists if project has
+    dependencies, code matches design.md architecture, and no AC-* is
+    closed with placeholder behavior. *)
 PassBuildGate ==
     /\ pipelineState = "Building"
     /\ pipelineState' = "BuildGatePassed"
@@ -337,13 +385,15 @@ AutoContinueToReview ==
 \* PHASE 3.5: REVIEW — Multi-axis code review before reconcile
 \* ================================================================
 
-(* Review agent reads scope.md, design.md, tests, and relevant
-   implementation files. It audits the code across five axes:
-   correctness, readability, architecture, security, and performance.
-   Tests may be green while code is still too risky or confusing to
-   continue. Post-review gate: no Critical or Required findings remain,
-   review-fix changes have re-run invalidated BUILD evidence, and any
-   dead code or dependency concerns are resolved or documented. *)
+(* Review agent reads scope.md, design.md, readiness.md, tests, and
+    relevant implementation files. It audits the code across five axes:
+    correctness, readability, architecture, security, and performance,
+    and explicitly checks for scope reduction, placeholder behavior, and
+    broken AC-* traceability. Tests may be green while code is still too
+    risky or confusing to continue. Post-review gate: no Critical or
+    Required findings remain, review-fix changes have re-run invalidated
+    BUILD evidence, and any dead code, dependency, or scope-fidelity
+    concerns are resolved or documented. *)
 PassReviewGate ==
     /\ pipelineState = "Reviewing"
     /\ pipelineState' = "ReviewGatePassed"
@@ -387,22 +437,23 @@ AutoContinueToReconcile ==
 \* PHASE 3.6: RECONCILE — Cross-check documents against codebase
 \* ================================================================
 
-(* Reconcile agent reads scope.md, design.md, log.md, preferences.md,
-   and the actual file tree + code. Checks six axes: directory structure,
-   interfaces, acceptance criteria, external integrations, stack/deploy
-   config, and log accuracy. Classifies each inconsistency as cosmetic
-   (auto-fix), structural (auto-fix with annotation), or spec-violating
-   (STOP for human). Outcome: CLEAN (no drift), REPAIRED (structural
-   fixes applied and committed), or BLOCKED (spec-violating drift). *)
+(* Reconcile agent reads scope.md, design.md, readiness.md, log.md,
+   preferences.md, and the actual file tree + code. Checks seven axes:
+   directory structure, interfaces, acceptance criteria, external
+   integrations, stack/deploy config, log accuracy, and readiness /
+   traceability. Classifies each inconsistency as cosmetic (auto-fix),
+   structural (auto-fix with annotation), or spec-violating (STOP for
+   human). Outcome: CLEAN (no drift), REPAIRED (structural fixes
+   applied and committed), or BLOCKED (spec-violating drift). *)
 ReconcileClean ==
     /\ pipelineState = "Reconciling"
     /\ pipelineState' = "Verifying"
 
 (* Reconcile finds structural drift: design.md directory structure
-   doesn't match actual files, interface shapes changed, integrations
-   added/removed. Agent auto-fixes the documents to match reality
-   (code wins over stale docs), annotates log.md, and commits. Then
-   proceeds to VERIFY with accurate specs. *)
+    doesn't match actual files, interface shapes changed, integrations
+    added/removed. Agent auto-fixes the documents to match reality
+    (code wins over out-of-sync docs), annotates log.md, and commits.
+    Then proceeds to VERIFY with accurate specs. *)
 ReconcileRepaired ==
     /\ pipelineState = "Reconciling"
     /\ pipelineState' = "Verifying"
@@ -431,21 +482,22 @@ ResolveReconcileBlock ==
 \* ================================================================
 
 (* Evaluator mindset — now enforced by the verify agent which has
-   read + search + execute tools only (NO edit capability). Skeptical
-   by default, probes edge cases, does not rationalize issues away.
-   Runs all tests. Exercises the actual software against each acceptance
-   criterion with real evidence: CLI output, curl responses, Playwright
-   browser checks, sample data runs. Records exact command + exact
-   output for each criterion. If acceptance criteria include throughput
+    read + search + execute tools only (NO edit capability). Skeptical
+    by default, probes edge cases, does not rationalize issues away.
+    Runs all tests. Exercises the actual software against each AC-* and
+    readiness truth with real evidence: CLI output, curl responses,
+    Playwright browser checks, sample data runs. Records exact command +
+    exact output for each criterion. If acceptance criteria include throughput
    or latency-under-load requirements, runs lightweight load test (hey,
    wrk, k6) at specified concurrency to verify thresholds hold under
    concurrent load. Security scan: grep for secrets, check XSS/SQLi/
    CSRF, verify auth, audit dependency sources. Confirms deployment
-   config matches scope.md target. If bugs are found, the verify agent
+    config matches scope.md target and checks that key links from scope
+    to tests to runtime proof still hold. If bugs are found, the verify agent
    reports them but CANNOT fix them — control returns to the main agent
    for fixes. Post-verify gate: all tests pass, app runs locally, at
-   least one criterion verified by running the app, no critical security
-   issues, deploy config correct. *)
+    least one criterion verified by running the app, every AC-* verified
+    with evidence, no critical security issues, deploy config correct. *)
 PassVerifyGate ==
     /\ pipelineState = "Verifying"
     /\ pipelineState' = "VerifyGatePassed"
@@ -474,7 +526,7 @@ FixVerifyFailures ==
    interface changes, architecture adjustments), re-run the reconcile
    agent before the final verify pass to ensure scaffolding docs still
    match the code. This prevents the verify agent from grading against
-   stale specs after the main agent rewrote parts of the codebase. *)
+   out-of-sync specs after the main agent rewrote parts of the codebase. *)
 VerifyFixReconcile ==
     /\ pipelineState = "VerifyFixing"
     /\ pipelineState' = "Reconciling"
@@ -555,7 +607,7 @@ RetryDeploy ==
    "BLOCKED: [what's wrong]. Options: [A, B, C]. Recommendation: [X]."
    Waits for human input before continuing. *)
 BlockAfterThreeRetries ==
-    /\ pipelineState \in {"ExpandRetrying", "DesignRetrying", "BuildRetrying", "ReviewRetrying", "VerifyRetrying", "DeployRetrying", "ReconcileBlocked"}
+    /\ pipelineState \in {"ExpandRetrying", "DesignRetrying", "AnalyzeRetrying", "BuildRetrying", "ReviewRetrying", "VerifyRetrying", "DeployRetrying", "ReconcileBlocked"}
     /\ pipelineState' = "BlockedOnGate"
 
 (* Human provides the missing input: answers a question, changes scope,
@@ -605,17 +657,21 @@ ResolveComplexityBrake ==
    Used for high-stakes or skyscraper-tier projects where human review
    between phases is worth the latency cost. *)
 PauseForSteppedMode ==
-    /\ pipelineState \in {"ExpandGatePassed", "DesignGatePassed", "BuildGatePassed", "ReviewGatePassed", "VerifyGatePassed"}
+    /\ pipelineState \in {"ExpandGatePassed", "DesignGatePassed", "AnalyzeGatePassed", "BuildGatePassed", "ReviewGatePassed", "VerifyGatePassed"}
     /\ pipelineState' = "SteppedModePaused"
 
-(* REVIEW: In practice, only one of the following five transitions is
+(* REVIEW: In practice, only one of the following six transitions is
    valid depending on which gate-passed state preceded the pause.
    With a single state variable we cannot track which phase paused,
-   so all five are modeled as possible. The agent determines the
+   so all six are modeled as possible. The agent determines the
    correct next phase from scaffolding/log.md. *)
 ResumeToDesign ==
     /\ pipelineState = "SteppedModePaused"
     /\ pipelineState' = "Designing"
+
+ResumeToAnalyze ==
+    /\ pipelineState = "SteppedModePaused"
+    /\ pipelineState' = "Analyzing"
 
 ResumeToBuild ==
     /\ pipelineState = "SteppedModePaused"
@@ -656,7 +712,7 @@ ResumeToReconcile ==
    immediate next step. This ensures the next session can pick up
    cleanly. *)
 DropSession ==
-    /\ pipelineState \in {"Expanding", "Designing", "Building", "Reviewing", "ReviewFixing", "Reconciling", "Verifying", "VerifyFixing", "Deploying"}
+    /\ pipelineState \in {"Expanding", "Designing", "Analyzing", "Building", "Reviewing", "ReviewFixing", "Reconciling", "Verifying", "VerifyFixing", "Deploying"}
     /\ pipelineState' = "SessionDropped"
 
 (* Human opens a new chat session on the same repo. Agent must recover
@@ -693,8 +749,14 @@ RecoverToDesign ==
     /\ pipelineState = "ContextRecovering"
     /\ pipelineState' = "Designing"
 
-(* design.md exists and gate passed but code is incomplete or tests
-   are failing. Resume BUILD. *)
+(* design.md exists and gate passed but readiness.md is missing, out of
+    sync with scope/design, or never passed. Resume ANALYZE. *)
+RecoverToAnalyze ==
+     /\ pipelineState = "ContextRecovering"
+     /\ pipelineState' = "Analyzing"
+
+(* readiness.md exists and analyze gate passed but code is incomplete
+    or tests are failing. Resume BUILD. *)
 RecoverToBuild ==
     /\ pipelineState = "ContextRecovering"
     /\ pipelineState' = "Building"
@@ -738,6 +800,10 @@ ManualReconcileFromDesigning ==
     /\ pipelineState = "Designing"
     /\ pipelineState' = "Reconciling"
 
+ManualReconcileFromAnalyzing ==
+    /\ pipelineState = "Analyzing"
+    /\ pipelineState' = "Reconciling"
+
 ManualReconcileFromBuilding ==
     /\ pipelineState = "Building"
     /\ pipelineState' = "Reconciling"
@@ -755,6 +821,10 @@ ManualReconcileFromVerifying ==
 ResumeAfterReconcileToDesigning ==
     /\ pipelineState = "Reconciling"
     /\ pipelineState' = "Designing"
+
+ResumeAfterReconcileToAnalyzing ==
+    /\ pipelineState = "Reconciling"
+    /\ pipelineState' = "Analyzing"
 
 ResumeAfterReconcileToBuilding ==
     /\ pipelineState = "Reconciling"
@@ -813,10 +883,10 @@ RejectIteration ==
     /\ pipelineState' = "PipelineComplete"
 
 (* No architecture changes needed — scope updated, skip DESIGN,
-   go directly to BUILD with existing design.md. *)
-IterateDirectToBuild ==
+   go directly to ANALYZE with existing design.md. *)
+IterateDirectToAnalyze ==
     /\ pipelineState = "IterationConfirmed"
-    /\ pipelineState' = "Building"
+    /\ pipelineState' = "Analyzing"
 
 (* Architecture changes needed (minor or major). DESIGN phase runs
    to update design.md before BUILD. The agent determines depth
@@ -833,8 +903,8 @@ IterateToDesign ==
 (* Pipeline is complete. Human confirms the live system works.
    DELIVERY.md has been written with the handoff details.
    
-   Scaffolding (scope.md, design.md, log.md) and input docs (docs/input/)
-   PERSIST as the project's provenance record. They are NOT archived or
+   Scaffolding (scope.md, design.md, readiness.md, log.md) and input docs
+   (docs/input/) PERSIST as the project's provenance record. They are NOT archived or
    deleted. They enable:
    1. Iteration — /iterate reads them to propose the next version
    2. Context recovery — future agent sessions use them to understand
@@ -915,6 +985,10 @@ Next ==
     \/ PassDesignGate
     \/ FailDesignGate
     \/ RetryDesign
+    \/ AutoContinueToAnalyze
+    \/ PassAnalyzeGate
+    \/ FailAnalyzeGate
+    \/ RetryAnalyze
     \/ AutoContinueToBuild
     \/ PassBuildGate
     \/ FailBuildGate
@@ -946,6 +1020,7 @@ Next ==
     \/ ResolveComplexityBrake
     \/ PauseForSteppedMode
     \/ ResumeToDesign
+    \/ ResumeToAnalyze
     \/ ResumeToBuild
     \/ ResumeToReview
     \/ ResumeToVerify
@@ -955,16 +1030,19 @@ Next ==
     \/ StartContextRecovery
     \/ RecoverToExpand
     \/ RecoverToDesign
+    \/ RecoverToAnalyze
     \/ RecoverToBuild
     \/ RecoverToReview
     \/ RecoverToVerify
     \/ RecoverToDeploy
     \/ RecoverToReconcile
     \/ ManualReconcileFromDesigning
+    \/ ManualReconcileFromAnalyzing
     \/ ManualReconcileFromBuilding
     \/ ManualReconcileFromReviewing
     \/ ManualReconcileFromVerifying
     \/ ResumeAfterReconcileToDesigning
+    \/ ResumeAfterReconcileToAnalyzing
     \/ ResumeAfterReconcileToBuilding
     \/ ResumeAfterReconcileToReviewing
     \/ ResumeAfterReconcileToVerifying
@@ -983,7 +1061,7 @@ Next ==
     \/ ProposeIteration
     \/ ConfirmIteration
     \/ RejectIteration
-    \/ IterateDirectToBuild
+    \/ IterateDirectToAnalyze
     \/ IterateToDesign
     \* PMF validation (outer human loop)
     \/ StartPMFValidation

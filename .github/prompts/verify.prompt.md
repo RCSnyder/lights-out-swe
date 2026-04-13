@@ -16,12 +16,13 @@ You are now the **evaluator**, not the builder. Assume the build has bugs until 
 
 ## Steps
 
-1. Read `scaffolding/scope.md` for acceptance criteria
+1. Read `scaffolding/scope.md` for acceptance criteria, `scaffolding/design.md` for architecture, and `scaffolding/readiness.md` when it exists for truths, key links, and planned runtime proofs
 2. Run all tests. Record exact command, exit code, pass/fail count, any failure output.
 3. **Audit test quality** — read the test files and check that tests are non-trivial:
    - Tests assert meaningful properties (not just `assert True` or `is not None`)
    - Tests exercise real code paths (not just mocks testing mocks)
    - Tests actually verify what the acceptance criterion states (timing tests for latency criteria, output validation for correctness criteria)
+   - Tests retain `AC-*` traceability so the verifier can tell which criterion is being proven
    - At least 2 criteria have edge case tests beyond the happy path
    - If tests are vacuous: FAIL with specific examples of what's wrong
 4. **Actually exercise the software** — verify each acceptance criterion with real evidence:
@@ -30,7 +31,9 @@ You are now the **evaluator**, not the builder. Assume the build has bugs until 
    - **Web UI / SPA**: Run locally and use Playwright (`uv run playwright ...`) to load pages, check elements exist, interact with controls
    - **Data pipeline**: Run with sample data, verify output files/database state
    - **Cron/script**: Execute once manually, check side effects
-   - For each criterion, record the **exact command run** and **exact output** as evidence
+   - Use the planned runtime proof from `scaffolding/readiness.md` when it exists
+   - For each `AC-*`, record the **exact command run** and **exact output** as evidence
+   - Verify the readiness `Truths` as part of this exercise. If a truth cannot be checked directly, say why.
 5. Security check:
    - `grep -r` for common secret patterns (API_KEY, SECRET, password, token) in source
    - If web: no obvious XSS, SQL injection, or CSRF
@@ -70,6 +73,7 @@ If the verify agent finds failures:
 - [ ] All tests pass
 - [ ] Tests are non-trivial (verify agent confirms tests exercise real code paths with meaningful assertions)
 - [ ] Application runs locally without errors
+- [ ] Every `AC-*` is verified, explicitly failed, or explicitly blocked with evidence
 - [ ] At least one acceptance criterion verified by actually running the app
 - [ ] No critical security issues found
 - [ ] Deployment config exists and looks correct
@@ -82,7 +86,7 @@ Log the result to `scaffolding/log.md`:
 ## VERIFY — [timestamp]
 
 - **Gate**: PASS (attempt N)
-- **Evidence**: [list each acceptance criterion: ✓ verified / ✗ failed / ? untested]
+- **Evidence**: [list each `AC-*`: ✓ verified / ✗ failed / ? blocked, plus truth checks]
 - **Changes**: [any fixes applied during verify-fix cycle]
 - **Retries**: [total gate attempts this phase]
 - **Next**: DEPLOY
@@ -91,7 +95,7 @@ Log the result to `scaffolding/log.md`:
 Git checkpoint:
 
 ```
-git add -A && git commit -m "test(verify): all acceptance criteria verified" -m "[list each criterion: \u2713 verified / \u2717 failed / ? untested]\nGate: post-verify PASS (attempt N)."
+git add -A && git commit -m "test(verify): all acceptance criteria verified" -m "[list each AC-*: \u2713 verified / \u2717 failed / ? blocked]\nGate: post-verify PASS (attempt N)."
 ```
 
 **Auto-continue to DEPLOY** (unless user specified stepped mode).

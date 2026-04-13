@@ -19,7 +19,7 @@ Use REVIEW to catch issues that tests often miss:
 
 ## Steps
 
-1. Read `scaffolding/scope.md` and `scaffolding/design.md`
+1. Read `scaffolding/scope.md`, `scaffolding/design.md`, and `scaffolding/readiness.md` if it exists
 2. Run the `review` agent
 3. The review agent audits tests first, then implementation, across five axes:
    - correctness
@@ -27,6 +27,7 @@ Use REVIEW to catch issues that tests often miss:
    - architecture
    - security
    - performance
+     It also explicitly checks for scope reduction, placeholder behavior, and broken `AC-*` traceability.
 4. If the review agent reports **Critical** or **Required** findings:
    - Control returns to the main agent
    - Before editing, load `.github/skills/build-discipline/SKILL.md`
@@ -41,6 +42,7 @@ Use REVIEW to catch issues that tests often miss:
 - [ ] No `Required` review findings remain
 - [ ] Any BUILD evidence invalidated by review-fix work has been re-run
 - [ ] Dead code, dependency, and maintainability concerns are either resolved or explicitly documented
+- [ ] No unapproved scope reduction, placeholder behavior, or broken `AC-*` traceability remains
 
 If any gate condition fails, fix the issue and re-run REVIEW. Up to 3 retries.
 

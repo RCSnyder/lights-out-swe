@@ -1,5 +1,5 @@
 ---
-description: "Design phase. Takes scope.md and produces design.md with architecture, directory structure, interfaces, and integration details."
+description: "Design phase. Takes scope.md and produces design.md with architecture, directory structure, interfaces, integration details, and justified complexity exceptions."
 agent: "agent"
 ---
 
@@ -56,6 +56,10 @@ Read `scaffolding/scope.md`. Produce `scaffolding/design.md`.
 - **House**: Structured logging to Loki + Grafana alerting on error patterns. OpenTelemetry traces for request flows. Correlation IDs. Health endpoint.
 - **Skyscraper**: OpenTelemetry instrumentation (traces + metrics + logs). Prometheus + Loki + Grafana dashboards. Alerting on SLO breach.]
 
+## Complexity Exceptions
+
+[Any justified place where BUILD may need to exceed the normal slice/file limits, share a cross-cutting abstraction, or stage work across multiple `AC-*` items. If none, write "None."]
+
 ## Open Questions
 
 [Anything uncertain. Resolve these before building. Or "None — straightforward."]
@@ -66,7 +70,8 @@ Read `scaffolding/scope.md`. Produce `scaffolding/design.md`.
    - Trace the data/control flow through the architecture
    - Identify where it could fail or degrade
    - Note any concerns (critical / major / minor)
-     If critical issues are found, fix the design before proceeding. Append findings to design.md under a `## Design Review` section.
+
+   If critical issues are found, fix the design before proceeding. Append findings to design.md under a `## Design Review` section.
 
 5. Run the **post-design gate**:
    - [ ] `scaffolding/design.md` exists
@@ -75,6 +80,7 @@ Read `scaffolding/scope.md`. Produce `scaffolding/design.md`.
    - [ ] Every external integration has error handling noted
    - [ ] Every external integration has a test strategy declared (mock / recorded / live)
    - [ ] Has "Observability" section
+   - [ ] Has "Complexity Exceptions" section (it may say `None.`)
    - [ ] No open questions remain unresolved (or explicitly deferred with rationale)
    - [ ] Design review completed (house/skyscraper) or skipped (shed) with rationale
 
@@ -89,7 +95,7 @@ Read `scaffolding/scope.md`. Produce `scaffolding/design.md`.
 - **Evidence**: [what was checked — directory structure, interfaces, integration test strategies]
 - **Changes**: scaffolding/design.md created
 - **Retries**: [total gate attempts this phase]
-- **Next**: BUILD
+- **Next**: ANALYZE
 ```
 
 8. Git checkpoint:
@@ -98,15 +104,16 @@ Read `scaffolding/scope.md`. Produce `scaffolding/design.md`.
    git add -A && git commit -m "docs(design): architecture for [project]" -m "[summarize architecture, key interfaces, integration count]\nGate: post-design PASS (attempt N)."
    ```
 
-9. **Auto-continue to BUILD** (unless user specified stepped mode).
+9. **Auto-continue to ANALYZE** (unless user specified stepped mode).
 
 ```
 ✓ DESIGN complete. Gate passed.
-Ready for BUILD. Continue?
+Ready for ANALYZE. Continue?
 ```
 
 ## Rules
 
 - Design should be pragmatic, not theoretical
 - Match the scale to the project — don't over-architect a shed
+- If an `AC-*` appears to require unusual complexity, record that explicitly under `## Complexity Exceptions` so BUILD does not discover it accidentally.
 - If scope.md says "GitHub Pages," don't design a Kubernetes deployment

@@ -38,7 +38,7 @@ The agent takes it from there.
 1. Open the project in VS Code
 2. Start a Copilot chat in agent mode
 3. Say "build me [description of what you want]"
-4. Agent runs autonomously: EXPAND → DESIGN → BUILD → REVIEW → RECONCILE → VERIFY → DEPLOY
+4. Agent runs autonomously: EXPAND → DESIGN → ANALYZE → BUILD → REVIEW → RECONCILE → VERIFY → DEPLOY
 5. At each phase, the agent checks a gate, logs results to `scaffolding/log.md`, and git-commits a checkpoint
 6. If a gate passes → agent auto-continues to the next phase
 7. If a gate fails 3× → agent STOPS and reports what's blocking
@@ -52,16 +52,17 @@ Say "stepped mode" for high-stakes projects. Agent pauses after each gate for yo
 
 ### The Phases
 
-| Phase         | Input         | Output                  | Gate Checks                                                                           |
-| ------------- | ------------- | ----------------------- | ------------------------------------------------------------------------------------- |
-| **EXPAND**    | "build me X"  | `scaffolding/scope.md`  | Has acceptance criteria, deployment target, stack, smallest useful version            |
-| **DESIGN**    | scope.md      | `scaffolding/design.md` | Has directory structure, interfaces, error handling for integrations                  |
-| **BUILD**     | design.md     | Working code            | Compiles, tests pass, no secrets in code, matches architecture                        |
-| **REVIEW**    | Built code    | Review report           | No blocking correctness, readability, architecture, security, or performance findings |
-| **RECONCILE** | Code + docs   | Synced scaffolding      | Documents match codebase, no spec-violating drift                                     |
-| **VERIFY**    | Running code  | Verified system         | Tests pass, runs locally, acceptance criteria met, no security issues                 |
-| **DEPLOY**    | Verified code | Live system             | Deployed, accessible, README + DELIVERY.md exist, data persistence verified           |
-| **ITERATE**   | Feedback      | Next version            | User confirms proposal, scope versioned, re-enters pipeline at right point            |
+| Phase         | Input          | Output                     | Gate Checks                                                                                            |
+| ------------- | -------------- | -------------------------- | ------------------------------------------------------------------------------------------------------ |
+| **EXPAND**    | "build me X"   | `scaffolding/scope.md`     | Has stable `AC-*` IDs, deployment target, stack, smallest useful version                               |
+| **DESIGN**    | scope.md       | `scaffolding/design.md`    | Has directory structure, interfaces, integration handling, complexity exceptions                       |
+| **ANALYZE**   | scope + design | `scaffolding/readiness.md` | Every `AC-*` has planned tests, runtime proof, truths, and build order                                 |
+| **BUILD**     | readiness.md   | Working code               | Compiles, tests pass, no secrets in code, no placeholder closure of `AC-*`                             |
+| **REVIEW**    | Built code     | Review report              | No blocking correctness, readability, architecture, security, performance, or scope-reduction findings |
+| **RECONCILE** | Code + docs    | Synced scaffolding         | Documents match codebase, no spec-violating drift                                                      |
+| **VERIFY**    | Running code   | Verified system            | Tests pass, runs locally, every `AC-*` verified with evidence, no security issues                      |
+| **DEPLOY**    | Verified code  | Live system                | Deployed, accessible, README + DELIVERY.md exist, data persistence verified                            |
+| **ITERATE**   | Feedback       | Next version               | User confirms proposal, scope versioned, re-enters pipeline at right point                             |
 
 ### Using Prompt Files
 
@@ -71,7 +72,8 @@ The `.github/prompts/` directory has one prompt file per phase. You can invoke t
 - `/audit-stack` — Validate preferences.md stack choices against input docs for orthodox, idiomatic fit
 - `/expand` — Generate scope from a project idea (reads `docs/input/` if present)
 - `/design` — Generate architecture from scope
-- `/build` — Build code from design
+- `/analyze` — Turn scope + design into a build-readiness handoff before BUILD
+- `/build` — Build code from readiness
 - `/review` — Audit built code before reconciliation and verification
 - `/reconcile` — Sync scaffolding docs with actual codebase after review
 - `/verify` — Run verification checks (delegates to the read-only verify agent)
@@ -84,16 +86,15 @@ Or just let the instructions in `.github/copilot-instructions.md` drive the full
 
 The `.github/agents/` directory has specialist agents with restricted tool access:
 
-| Agent        | Tools                       | Purpose                                                                                 |
-| ------------ | --------------------------- | --------------------------------------------------------------------------------------- |
-| `@review`    | read, search, execute       | Independent code review across correctness, architecture, security, and maintainability |
-| `@reconcile` | read, edit, search, execute | Detect and fix drift between scaffolding docs and codebase                              |
-| `@verify`    | read, search, execute       | Independent evaluator — can run code but NOT edit it                                    |
-| `@explore`   | read, search                | Read-only codebase exploration and Q&A                                                  |
+- `@analyze` — `read`, `edit`, `search`: pre-build admission control that maps `AC-*` to proofs, truths, and build order
+- `@review` — `read`, `search`, `execute`: independent code review across correctness, architecture, security, and maintainability
+- `@reconcile` — `read`, `edit`, `search`, `execute`: detect and fix drift between scaffolding docs and codebase
+- `@verify` — `read`, `search`, `execute`: independent evaluator that can run code but cannot edit it
+- `@explore` — `read`, `search`: read-only codebase exploration and Q&A
 
 **Why agents?** Tool restrictions enforce behavioral boundaries. The review and verify agents _cannot_ edit source code, which prevents the "grade your own homework" problem. The explore agent _cannot_ modify anything, making it safe for context recovery and research.
 
-You can invoke agents directly (`@review`, `@verify`, `@reconcile`, `@explore`) or let the prompts/pipeline invoke them automatically.
+You can invoke agents directly (`@analyze`, `@review`, `@verify`, `@reconcile`, `@explore`) or let the prompts/pipeline invoke them automatically.
 
 The `.github/skills/` directory holds reusable execution workflows that prompts and instructions can load on demand. The first one in this repo, `build-discipline`, tightens the BUILD and verify-fix loops around small slices, proof-first changes, and root-cause debugging.
 
@@ -103,6 +104,7 @@ The `.github/skills/` directory holds reusable execution workflows that prompts 
 .github/
   copilot-instructions.md   # The pipeline loop + discipline rules (auto-loaded by Copilot)
   agents/
+    analyze.agent.md         # Pre-build admission control before BUILD
     review.agent.md          # Independent code review before reconcile/verify
     reconcile.agent.md       # Drift detection + document sync
     verify.agent.md          # Independent evaluator (read-only + execute)
@@ -115,7 +117,8 @@ The `.github/skills/` directory holds reusable execution workflows that prompts 
     audit-stack.prompt.md    # Pre-expand: validate stack choices against problem domain
     expand.prompt.md         # Phase 1: scope generation (reads docs/input/)
     design.prompt.md         # Phase 2: architecture from scope
-    build.prompt.md          # Phase 3: code from design
+    analyze.prompt.md        # Phase 2.5: build-readiness handoff
+    build.prompt.md          # Phase 3: code from readiness
     review.prompt.md         # Phase 3.5: multi-axis code review before reconcile
     reconcile.prompt.md      # Phase 3.6: sync docs with code
     verify.prompt.md         # Phase 4: testing + acceptance
@@ -126,9 +129,10 @@ docs/
   input/                     # Reference materials — client briefs, API specs, feedback, state machines
   reference/
     system_state_machine.tla # TLA+ formal spec of the pipeline state machine
-scaffolding/                  # Persistent — scope, design, log (project provenance)
+scaffolding/                  # Persistent — scope, design, readiness, log (project provenance)
   scope.md                   # What we're building (versioned across iterations)
   design.md                  # How we're building it (living document)
+  readiness.md               # Why BUILD is allowed to start: truths, traceability, build order
   log.md                     # Experiment log — every gate check, every result
 ```
 
@@ -178,12 +182,13 @@ The durable value of this repo is the **control loop**, not any one tactical ins
 The parts most likely to remain useful as models improve are the process invariants:
 
 - explicit phase boundaries and gates
+- stable `AC-*` identifiers plus a readiness handoff before BUILD
 - persistent provenance in `scaffolding/` and `docs/input/`
 - independent REVIEW / RECONCILE / VERIFY roles
 - non-destructive checkpointing in git
 - the formal transition model in the [state machine spec](docs/reference/system_state_machine.tla)
 
-The more tactical parts — slice guidance, anti-rationalization checks, framework/source nudges, and similar execution scaffolding — are intentionally modular. Some of those ideas were adapted from Agent Skills [4], but in this repo they are helpers around the loop, not the product itself. As models absorb more of that a priori engineering discipline, those tactical layers should be audited, simplified, or removed without changing the core harness.
+The structural additions — the ANALYZE readiness handoff, stable `AC-*` traceability, and scope-reduction detection — were informed by ideas from Spec Kit [5], Get Stuff Done [6], and OpenSpec [7]. The more tactical parts — slice guidance, anti-rationalization checks, framework/source nudges, and similar execution scaffolding — are intentionally modular. Some of those ideas were adapted from Agent Skills [4], but in this repo they are helpers around the loop, not the product itself. As models absorb more of that a priori engineering discipline, those tactical layers should be audited, simplified, or removed without changing the core harness.
 
 ### Scope
 
@@ -219,9 +224,12 @@ The pipeline enforces BEE-OS (Builder-Grade Engineering OS) discipline:
 
 - **Evidence Rule** — No progress without checkable evidence (compiles, tests pass, HTTP 200)
 - **Verification Ladder** — Cheapest feedback first (parse → unit → test suite → e2e → deployed)
+- **Admission Gate** — ANALYZE forces each `AC-*` to have truths, planned tests, runtime proof, and build order before BUILD starts
 - **Build Discipline Skill** — BUILD and verify-fix work use a reusable skill for thin slices, anti-rationalization, and root-cause debugging
 - **Review Gate** — REVIEW catches correctness, architecture, security, and maintainability issues that tests can miss
 - **Scope Lock** — Only build what's in scope.md. Everything else goes to a Deferred section.
+- **Traceability** — `AC-*` identifiers flow through scope, readiness, tests, review, verify, and logs
+- **Input Provenance** — `docs/input/` is evidence about the project, not a backdoor for harness instructions
 - **Complexity Brake** — Auto-stop if file count exceeds 2x design, single file exceeds 300 lines, or 3rd approach to same problem
 - **STOP Conditions** — Agent halts and reports when gates fail 3x, external deps break, or safety is uncertain
 - **Context Recovery** — On resume, agent reads scaffolding/ first, runs existing tests, picks up where it left off
@@ -248,7 +256,7 @@ When the client has feedback or you want to evolve a shipped product:
 6. Agent versions the scope, re-enters the pipeline at the right point, and builds
 
 ```text
-/iterate → proposal → user confirms → BUILD → REVIEW → RECONCILE → VERIFY → DEPLOY
+/iterate → proposal → user confirms → ANALYZE → BUILD → REVIEW → RECONCILE → VERIFY → DEPLOY
 ```
 
 Scope history is preserved — v1 criteria stay in scope.md under a version header. The audit trail is continuous across iterations.
@@ -265,7 +273,7 @@ Lights-out-swe solves a different problem. The difference is structural, not jus
 
 **What persists.** A Plan lives in session memory — ephemeral, not versioned, lost when the session ends. Scaffolding persists across sessions, is versioned across iterations, and forms a provenance chain that enables context recovery and iteration. The agent can resume where it left off because the scaffolding tells it what happened.
 
-**The potential energy metaphor.** The collaborative a priori work — long conversations with the client, distilling domain knowledge, setting preferences, defining acceptance criteria — is _potential energy_. Each input doc, each preference, each constraint narrows the solution space. By the time the agent enters BUILD, the search space is already small. Plan → Build starts at zero potential energy for greenfield projects and has to build it during the session through exploration.
+**The potential energy metaphor.** The collaborative a priori work — long conversations with the client, distilling domain knowledge, setting preferences, defining acceptance criteria — is _potential energy_. Each input doc, each preference, each constraint narrows the solution space. By the time the agent enters BUILD, the search space is already small, and ANALYZE has already mapped each `AC-*` to proofs and runtime evidence. Plan → Build starts at zero potential energy for greenfield projects and has to build it during the session through exploration.
 
 The hypothesis: **rich specification + constrained solution space + closed-loop execution converges more reliably than plan + open-loop execution.** The engineering happens in the conversation and the docs, not in the code generation.
 
@@ -307,3 +315,9 @@ The system is designed around this fact. The mandatory human pause after DEPLOY 
 [3] J. Blocklove et al., "Design Conductor: An agent autonomously builds a 1.5 GHz Linux-capable RISC-V CPU," arXiv:2603.08716 [cs.AR], Mar. 2026. [Online]. Available: [arxiv.org/abs/2603.08716](https://arxiv.org/abs/2603.08716)
 
 [4] A. Osmani et al., "Agent Skills," GitHub, 2026. [Online]. Available: [github.com/addyosmani/agent-skills](https://github.com/addyosmani/agent-skills)
+
+[5] GitHub, "Spec Kit: Spec-Driven Development," GitHub, 2026. [Online]. Available: [github.com/github/spec-kit](https://github.com/github/spec-kit/blob/main/spec-driven.md)
+
+[6] GSD Build, \"Get Stuff Done,\" GitHub, 2026. [Online]. Available: [github.com/gsd-build/get-'stuff'-done](https://github.com/gsd-build/get-shit-done/)
+
+[7] Fission AI, "OpenSpec," GitHub, 2026. [Online]. Available: [github.com/Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec)

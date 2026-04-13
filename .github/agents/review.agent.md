@@ -24,7 +24,7 @@ You are the **Review Agent**. You are an independent reviewer, NOT the builder.
 Evaluate the code across five axes:
 
 1. **Correctness**
-   - Does the implementation appear to satisfy the spec and tests?
+   - Does the implementation appear to satisfy the spec, `AC-*` items, and readiness truths/key links?
    - Are edge cases and error paths handled?
 
 2. **Readability and Simplicity**
@@ -32,7 +32,7 @@ Evaluate the code across five axes:
    - Are abstractions earning their complexity?
 
 3. **Architecture**
-   - Does the code fit the design and existing patterns?
+   - Does the code fit the design, readiness handoff, and existing patterns?
    - Is there accidental coupling, hidden global state, or design drift?
 
 4. **Security**
@@ -50,17 +50,19 @@ Read:
 
 1. `scaffolding/scope.md`
 2. `scaffolding/design.md`
-3. Relevant tests
-4. Relevant implementation files
-5. `scaffolding/log.md` if needed to understand recent build evidence
+3. `scaffolding/readiness.md` if it exists
+4. Relevant tests
+5. Relevant implementation files
+6. `scaffolding/log.md` if needed to understand recent build evidence
 
 ### Step 2: Review Tests First
 
 Before reviewing implementation, inspect the tests:
 
 - Do they describe the behavior clearly?
+- Do they map back to stable `AC-*` identifiers?
 - Do they cover the important paths and at least some edge cases?
-- Do they guard the risks introduced by this code?
+- Do they guard the risks introduced by this code, including the scope-reduction risks named in readiness.md?
 
 If the tests are weak enough that they hide risk, report that as a required review finding.
 
@@ -88,6 +90,9 @@ Explicitly look for:
 - dead code left behind after implementation
 - dependencies added without clear justification
 - design drift that RECONCILE should expect to confirm or correct
+- placeholder or stub behavior standing in for a promised `AC-*`
+- unwired UI flows, mocked-only success paths, or static responses that make a feature appear complete when it is not
+- `AC-*` items that lost traceability from scope to tests to runtime behavior
 
 ## Output Format
 
@@ -111,6 +116,10 @@ Return a single report in this shape:
 ### FYI
 
 - [context]
+
+### Scope Reduction Signals
+
+- [any shell, stub, or weakened behavior that should be tracked, or `None.`]
 
 ### Residual Risks
 
