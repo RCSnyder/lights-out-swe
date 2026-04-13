@@ -321,3 +321,5 @@ The system is designed around this fact. The mandatory human pause after DEPLOY 
 [6] GSD Build, \"Get Stuff Done,\" GitHub, 2026. [Online]. Available: [github.com/gsd-build/get-'stuff'-done](https://github.com/gsd-build/get-shit-done/)
 
 [7] Fission AI, "OpenSpec," GitHub, 2026. [Online]. Available: [github.com/Fission-AI/OpenSpec](https://github.com/Fission-AI/OpenSpec)
+
+[8] S. Levin, J. Corbet, "AI Coding Assistants," Linux Kernel Documentation, 2026. [Online]. Available: [github.com/torvalds/linux/.../coding-assistants.rst](https://github.com/torvalds/linux/blob/master/Documentation/process/coding-assistants.rst)

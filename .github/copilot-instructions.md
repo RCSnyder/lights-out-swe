@@ -466,6 +466,8 @@ and what the gate/evidence status was>
 
 **Scope** is the phase or component: `expand`, `design`, `build`, `verify`, `deploy`, or a module name.
 
+**Attribution**: Every commit includes an `Assisted-by` trailer identifying the agent and model that produced it. Use your self-reported identity. If uncertain about the exact model version, use `Unknown-Model`.
+
 **Examples:**
 
 ```
@@ -474,6 +476,8 @@ docs(expand): define scope for video editor project
 Acceptance criteria: 5 items covering timeline, export, preview.
 Stack: Rust + WASM per preferences.md.
 Gate: post-expand PASS (attempt 1).
+
+Assisted-by: GitHub-Copilot:Claude-Opus-4.6 - High
 ```
 
 ```
@@ -482,6 +486,8 @@ feat(build): implement timeline component with drag reordering
 First vertical slice — timeline renders clips and supports reorder.
 Verification ladder: compiles ✓, unit test passes ✓.
 Addresses AC-1 from scope.md.
+
+Assisted-by: Claude-Code:Claude-Sonnet-4
 ```
 
 ```
@@ -490,12 +496,14 @@ revert: revert "feat(build): add codec abstraction layer"
 Gate: post-build FAIL (attempt 3/3). Codec abstraction added
 complexity without solving the rendering bug. Reverting to
 last known-good state. BLOCKED: need user input on codec strategy.
+
+Assisted-by: GitHub-Copilot:Unknown-Model
 ```
 
 **After each gate passes**, commit the checkpoint:
 
 ```
-git add -A && git commit -m "<type>(<phase>): <summary>" -m "<body with WHY + evidence>"
+git add -A && git commit -m "<type>(<phase>): <summary>" -m "<body with WHY + evidence>" -m "Assisted-by: <agent>:<model+version>"
 ```
 
 **Non-destructive history is mandatory.** Never use:
